@@ -92,6 +92,7 @@ class SheetEditor {
 
     // data entry methods
     void enterDataEntryMode(DataEntryMode mode, char firstChar);
+    void editCurrentCell(void);
     void focusDataEntry(CxKeyAction keyAction);
     void commitDataEntry(void);
     void cancelDataEntry(void);

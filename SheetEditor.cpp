@@ -241,6 +241,15 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         }
         break;
 
+        //-------------------------------------------------------------------------------------
+        // Enter key edits existing cell content
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::NEWLINE:
+        {
+            editCurrentCell();
+        }
+        break;
+
         default:
             break;
     }
@@ -603,13 +612,45 @@ SheetEditor::initCommandCompleters(void)
 //-------------------------------------------------------------------------------------------------
 // SheetEditor::resetPrompt
 //
-// Reset the command line to show cell position.
+// Reset the command line to show cell position and content.
+// For formulas, shows the formula text (with = prefix).
+// For other types, shows the display value.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::resetPrompt(void)
 {
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
-    commandLineView->setText(pos.toAddress());
+    CxSheetCell *cell = sheetModel->getCellPtr(pos);
+
+    CxString display = pos.toAddress();
+
+    if (cell != NULL && cell->getType() != CxSheetCell::EMPTY) {
+        display = display + " ";
+
+        switch (cell->getType()) {
+            case CxSheetCell::TEXT:
+                display = display + cell->getText();
+                break;
+
+            case CxSheetCell::DOUBLE:
+            {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
+                display = display + CxString(buf);
+            }
+            break;
+
+            case CxSheetCell::FORMULA:
+                // Show formula with = prefix
+                display = display + "=" + cell->getFormulaText();
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    commandLineView->setText(display);
     commandLineView->updateScreen();
 }
 
@@ -695,6 +736,61 @@ SheetEditor::enterDataEntryMode(DataEntryMode mode, char firstChar)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::editCurrentCell
+//
+// Edit the current cell's existing content. Enters data entry mode with the cell's
+// value pre-filled, allowing the user to modify it.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::editCurrentCell(void)
+{
+    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+    CxSheetCell *cell = sheetModel->getCellPtr(pos);
+
+    // If cell is empty, just enter text mode with empty buffer
+    if (cell == NULL || cell->getType() == CxSheetCell::EMPTY) {
+        programMode = DATA_ENTRY;
+        _dataEntryMode = ENTRY_TEXT;
+        _dataEntryBuffer = "";
+        updateDataEntryDisplay();
+        return;
+    }
+
+    // Enter data entry mode with existing content
+    programMode = DATA_ENTRY;
+
+    switch (cell->getType()) {
+        case CxSheetCell::TEXT:
+            _dataEntryMode = ENTRY_TEXT;
+            _dataEntryBuffer = cell->getText();
+            break;
+
+        case CxSheetCell::DOUBLE:
+        {
+            _dataEntryMode = ENTRY_NUMBER;
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
+            _dataEntryBuffer = CxString(buf);
+        }
+        break;
+
+        case CxSheetCell::FORMULA:
+            _dataEntryMode = ENTRY_FORMULA;
+            // Include the = prefix for formula editing
+            _dataEntryBuffer = CxString("=") + cell->getFormulaText();
+            break;
+
+        default:
+            _dataEntryMode = ENTRY_TEXT;
+            _dataEntryBuffer = "";
+            break;
+    }
+
+    updateDataEntryDisplay();
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::focusDataEntry
 //
 // Handle keyboard input when in DATA_ENTRY mode.
@@ -704,9 +800,13 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
 {
     int action = keyAction.actionType();
 
-    // ENTER commits the data
+    // ENTER commits the data (or cancels if buffer is empty)
     if (action == CxKeyAction::NEWLINE) {
-        commitDataEntry();
+        if (_dataEntryBuffer.length() == 0) {
+            cancelDataEntry();
+        } else {
+            commitDataEntry();
+        }
         return;
     }
 
@@ -716,21 +816,16 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
         return;
     }
 
-    // BACKSPACE removes last character
+    // BACKSPACE removes last character (stops at empty buffer)
     if (action == CxKeyAction::BACKSPACE) {
         if (_dataEntryBuffer.length() > 0) {
             _dataEntryBuffer = _dataEntryBuffer.subString(0, _dataEntryBuffer.length() - 1);
-            // If buffer is empty, cancel entry
-            if (_dataEntryBuffer.length() == 0) {
-                cancelDataEntry();
-                return;
-            }
         }
         updateDataEntryDisplay();
         return;
     }
 
-    // Character input - append to buffer
+    // Character input
     if (action == CxKeyAction::LOWERCASE_ALPHA ||
         action == CxKeyAction::UPPERCASE_ALPHA ||
         action == CxKeyAction::SYMBOL ||
@@ -738,7 +833,28 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
 
         char c = keyAction.tag().data()[0];
 
-        // Validate input based on entry mode
+        // If buffer is empty, re-deduce entry mode based on character typed
+        if (_dataEntryBuffer.length() == 0) {
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+                _dataEntryMode = ENTRY_TEXT;
+            } else if ((c >= '0' && c <= '9')) {
+                _dataEntryMode = ENTRY_NUMBER;
+            } else if (c == '=') {
+                _dataEntryMode = ENTRY_FORMULA;
+            } else if (c == '$') {
+                _dataEntryMode = ENTRY_CURRENCY;
+            } else if (c == '+' || c == '-') {
+                _dataEntryMode = ENTRY_NUMBER;
+            } else {
+                // Default to text for other printable characters
+                _dataEntryMode = ENTRY_TEXT;
+            }
+            _dataEntryBuffer = CxString(c);
+            updateDataEntryDisplay();
+            return;
+        }
+
+        // Validate input based on current entry mode
         int valid = 0;
         switch (_dataEntryMode) {
             case ENTRY_TEXT:
@@ -834,8 +950,12 @@ SheetEditor::commitDataEntry(void)
     _dataEntryMode = ENTRY_NONE;
     _dataEntryBuffer = "";
 
-    // Optimized refresh - only redraw affected cells
+    // Move cursor down to next row (standard spreadsheet behavior)
+    sheetModel->cursorDownRequest();
+
+    // Optimized refresh - only redraw affected cells plus the new cursor position
     CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
+    affected.append(sheetModel->getCurrentPosition());  // add new cursor location
     sheetView->updateCells(affected);
     resetPrompt();
 }
@@ -887,4 +1007,6 @@ SheetEditor::updateDataEntryDisplay(void)
 
     commandLineView->setText(display);
     commandLineView->updateScreen();
+    commandLineView->placeCursor();
+    fflush(stdout);
 }
