@@ -24,6 +24,20 @@
 CommandEntry commandTable[] = {
 
     //--- file- ---------------------------------------------------------------
+    { "file-load",
+      NULL,
+      "Load spreadsheet from file",
+      1,
+      &SheetEditor::CMD_Load,
+      NULL },
+
+    { "file-save",
+      NULL,
+      "Save spreadsheet to file",
+      1,
+      &SheetEditor::CMD_Save,
+      NULL },
+
     { "file-quit",
       NULL,
       "Quit spreadsheet",

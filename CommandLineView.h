@@ -54,6 +54,9 @@ class CommandLineView {
     void placeCursor(void);
     // place cursor at end of text
 
+    void placeCursorAt(int col);
+    // place cursor at a specific column offset
+
   private:
 
     CxScreen *_screen;

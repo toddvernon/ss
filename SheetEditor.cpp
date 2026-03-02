@@ -80,9 +80,10 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     //---------------------------------------------------------------------------------------------
     sheetModel = new CxSheetModel();
 
-    // Load file if provided
+    // Load file if provided - track result for startup message
+    int fileLoadResult = 0;
     if (_filePath.length() > 0) {
-        sheetModel->loadSheet(_filePath);
+        fileLoadResult = sheetModel->loadSheet(_filePath);
     }
 
     //---------------------------------------------------------------------------------------------
@@ -125,6 +126,19 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     //---------------------------------------------------------------------------------------------
     sheetView->updateScreen();
     resetPrompt();
+
+    //---------------------------------------------------------------------------------------------
+    // Startup message
+    //---------------------------------------------------------------------------------------------
+    if (_filePath.length() > 0) {
+        if (fileLoadResult) {
+            setMessage(CxString("Loaded: ") + _filePath);
+        } else {
+            setMessage(CxString("New sheet: ") + _filePath);
+        }
+    } else {
+        setMessage("New sheet");
+    }
 }
 
 
@@ -264,8 +278,52 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         }
         break;
 
+        //-------------------------------------------------------------------------------------
+        // Control key sequences (Ctrl-X prefix commands)
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::CONTROL:
+        {
+            if (keyAction.tag() == "X") {
+                return dispatchControlX();
+            }
+        }
+        break;
+
         default:
             break;
+    }
+
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::dispatchControlX
+//
+// Handle Control-X prefix commands (two-key sequences like Ctrl-X Ctrl-S for save).
+// Returns 1 if quit requested, 0 otherwise.
+//-------------------------------------------------------------------------------------------------
+int
+SheetEditor::dispatchControlX(void)
+{
+    // Wait for the second key in the sequence
+    CxKeyAction secondAction = keyboard->getAction();
+
+    // Must be a control key for Ctrl-X commands
+    if (secondAction.actionType() != CxKeyAction::CONTROL) {
+        return 0;
+    }
+
+    // Ctrl-X Ctrl-S - Save
+    if (secondAction.tag() == "S") {
+        CMD_Save("");
+        return 0;
+    }
+
+    // Ctrl-X Ctrl-C - Quit
+    if (secondAction.tag() == "C") {
+        CMD_Quit("");
+        return 1;
     }
 
     return 0;
@@ -472,25 +530,42 @@ SheetEditor::handleCommandTab(void)
 // SheetEditor::handleCommandChar
 //
 // Handle character input in command mode.
+// Follows cm's pattern: processChar handles the character, returns result with updated input.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::handleCommandChar(CxKeyAction keyAction)
 {
     char c = keyAction.tag().data()[0];
-    _cmdBuffer = _cmdBuffer + CxString(c);
-
     CompleterResult result = _commandCompleter.processChar(_cmdBuffer, c);
 
-    // If we got a unique selection, auto-select it
-    if (result.getStatus() == COMPLETER_SELECTED) {
-        CommandEntry *cmd = (CommandEntry *)result.getSelectedData();
-        if (cmd != NULL) {
-            selectCommand(cmd);
-            return;
+    switch (result.getStatus()) {
+        case COMPLETER_UNIQUE:
+        {
+            // Single unique match - auto-complete and select
+            _cmdBuffer = result.getInput();
+            CommandEntry *cmd = (CommandEntry *)result.getSelectedData();
+            if (cmd != NULL) {
+                selectCommand(cmd);
+            }
         }
-    }
+        break;
 
-    updateCommandDisplay();
+        case COMPLETER_PARTIAL:
+        case COMPLETER_MULTIPLE:
+            // Multiple matches or partial - update buffer and show hints
+            _cmdBuffer = result.getInput();
+            updateCommandDisplay();
+            break;
+
+        case COMPLETER_NO_MATCH:
+            // No match - reject the character, don't update _cmdBuffer
+            break;
+
+        default:
+            _cmdBuffer = result.getInput();
+            updateCommandDisplay();
+            break;
+    }
 }
 
 
@@ -555,32 +630,38 @@ SheetEditor::cancelCommandInput(void)
 // SheetEditor::updateCommandDisplay
 //
 // Update the command line to show current input and matches.
+// Cursor is positioned after the typed text, not after the hints.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::updateCommandDisplay(void)
 {
-    CxString display = CxString("command> ") + _cmdBuffer;
+    CxString prefix = "command> ";
+    CxString display = prefix + _cmdBuffer;
 
     // Show matches - use buffer array for findMatches
     CxString matchNames[10];
     int matchCount = _commandCompleter.findMatches(_cmdBuffer, matchNames, 10);
 
-    if (matchCount > 0) {
-        display = display + "   [";
+    // Don't show hints if exact match
+    int isExactMatch = (matchCount == 1 && _cmdBuffer == matchNames[0]);
+
+    if (matchCount > 0 && !isExactMatch) {
+        display = display + "  ";
         for (int i = 0; i < matchCount && i < 5; i++) {
-            if (i > 0) {
-                display = display + " | ";
-            }
+            display = display + "| ";
             display = display + matchNames[i];
+            display = display + " ";
         }
         if (matchCount > 5) {
-            display = display + " ...";
+            display = display + "...";
         }
-        display = display + "]";
     }
 
     commandLineView->setText(display);
     commandLineView->updateScreen();
+
+    // Position cursor after typed text (prefix length + buffer length)
+    commandLineView->placeCursorAt(prefix.length() + _cmdBuffer.length());
 }
 
 
@@ -588,19 +669,25 @@ SheetEditor::updateCommandDisplay(void)
 // SheetEditor::updateArgumentDisplay
 //
 // Update the command line to show argument input.
+// Cursor is positioned after the argument text.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::updateArgumentDisplay(void)
 {
-    CxString display = _currentCommand->name;
-    display = display + " ";
+    CxString prefix = _currentCommand->name;
+    prefix = prefix + " ";
     if (_currentCommand->argHint != NULL) {
-        display = display + _currentCommand->argHint;
+        prefix = prefix + _currentCommand->argHint;
     }
-    display = display + ": " + _argBuffer;
+    prefix = prefix + ": ";
+
+    CxString display = prefix + _argBuffer;
 
     commandLineView->setText(display);
     commandLineView->updateScreen();
+
+    // Position cursor after the argument text
+    commandLineView->placeCursorAt(prefix.length() + _argBuffer.length());
 }
 
 
@@ -709,6 +796,69 @@ void
 SheetEditor::CMD_Quit(CxString commandLine)
 {
     _quitRequested = 1;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Load
+//
+// Load spreadsheet from file. Uses argument as filename if provided, otherwise uses _filePath.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Load(CxString commandLine)
+{
+    CxString filepath = commandLine;
+    filepath.stripLeading(" \t");
+    filepath.stripTrailing(" \t\n\r");
+
+    // If no argument provided, use current _filePath
+    if (filepath.length() == 0) {
+        if (_filePath.length() == 0) {
+            setMessage("No filename specified");
+            return;
+        }
+        filepath = _filePath;
+    }
+
+    // Try to load the file
+    if (sheetModel->loadSheet(filepath)) {
+        _filePath = filepath;
+        setMessage(CxString("Loaded: ") + filepath);
+        sheetView->updateScreen();
+    } else {
+        setMessage(CxString("Failed to load: ") + filepath);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Save
+//
+// Save spreadsheet to file. Uses argument as filename if provided, otherwise uses _filePath.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Save(CxString commandLine)
+{
+    CxString filepath = commandLine;
+    filepath.stripLeading(" \t");
+    filepath.stripTrailing(" \t\n\r");
+
+    // If no argument provided, use current _filePath
+    if (filepath.length() == 0) {
+        if (_filePath.length() == 0) {
+            setMessage("No filename specified");
+            return;
+        }
+        filepath = _filePath;
+    }
+
+    // Try to save the file
+    if (sheetModel->saveSheet(filepath)) {
+        _filePath = filepath;
+        setMessage(CxString("Saved: ") + filepath);
+    } else {
+        setMessage(CxString("Failed to save: ") + filepath);
+    }
 }
 
 

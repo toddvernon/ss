@@ -73,6 +73,7 @@ class SheetEditor {
 
     // mode focus handlers
     int  focusEditor(CxKeyAction keyAction);
+    int  dispatchControlX(void);
     void focusCommandPrompt(CxKeyAction keyAction);
 
     // command input methods
@@ -102,6 +103,8 @@ class SheetEditor {
 
     // command handlers
     void CMD_Quit(CxString commandLine);
+    void CMD_Load(CxString commandLine);
+    void CMD_Save(CxString commandLine);
 
     ProgramMode programMode;
 

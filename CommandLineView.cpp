@@ -115,3 +115,17 @@ CommandLineView::placeCursor(void)
 {
     CxScreen::placeCursor(_screenRow, _text.displayWidth());
 }
+
+
+//-------------------------------------------------------------------------------------------------
+// CommandLineView::placeCursorAt
+//
+// Place cursor at a specific column offset. Used to position cursor after typed text
+// but before the hint display.
+//-------------------------------------------------------------------------------------------------
+void
+CommandLineView::placeCursorAt(int col)
+{
+    CxScreen::placeCursor(_screenRow, col);
+    fflush(stdout);
+}
