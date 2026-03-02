@@ -96,6 +96,47 @@ SheetView::updateScreen(void)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::updateCells
+//
+// Redraw only the specified cells. Used for optimized updates after data changes.
+// Only redraws cells that are currently visible on screen.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
+{
+    CxSheetCellCoordinate cursorPos = sheetModel->getCurrentPosition();
+
+    int visRows = visibleDataRows();
+    int visCols = visibleDataCols();
+
+    for (int i = 0; i < (int)cells.entries(); i++) {
+        CxSheetCellCoordinate coord = cells.at(i);
+        int dataRow = coord.getRow();
+        int dataCol = coord.getCol();
+
+        // Check if cell is visible
+        if (dataRow < _scrollRowOffset || dataRow >= _scrollRowOffset + visRows) {
+            continue;  // row not visible
+        }
+        if (dataCol < _scrollColOffset || dataCol >= _scrollColOffset + visCols) {
+            continue;  // column not visible
+        }
+
+        // Calculate screen position
+        int screenRow = _startRow + _colHeaderHeight + (dataRow - _scrollRowOffset);
+        int screenCol = _rowHeaderWidth + ((dataCol - _scrollColOffset) * _defaultColWidth);
+
+        int isHighlighted = (dataRow == (int)cursorPos.getRow() &&
+                             dataCol == (int)cursorPos.getCol());
+
+        drawCell(screenRow, screenCol, dataRow, dataCol, isHighlighted);
+    }
+
+    fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::drawColumnHeaders
 //
 // Draw the column header row (A, B, C, ...)

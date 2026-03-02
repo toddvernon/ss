@@ -14,8 +14,10 @@
 #include <stdio.h>
 
 #include <cx/base/string.h>
+#include <cx/base/slist.h>
 #include <cx/screen/screen.h>
 #include <cx/sheetModel/sheetModel.h>
+#include <cx/sheetModel/sheetCellCoordinate.h>
 
 #ifndef _SheetView_h_
 #define _SheetView_h_
@@ -40,6 +42,10 @@ class SheetView {
 
     void updateScreen(void);
     // redraw the entire sheet view
+
+    void updateCells(CxSList<CxSheetCellCoordinate> cells);
+    // redraw only the specified cells (if visible)
+    // used for optimized updates after data changes
 
     void recalcForResize(int startRow, int endRow);
     // recalculate layout after terminal resize

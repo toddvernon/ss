@@ -814,9 +814,16 @@ SheetEditor::commitDataEntry(void)
         break;
 
         case ENTRY_FORMULA:
-            cell.setFormula(_dataEntryBuffer);
+        {
+            // Strip the leading '=' that's used for spreadsheet notation
+            CxString formulaText = _dataEntryBuffer;
+            if (formulaText.length() > 0 && formulaText.data()[0] == '=') {
+                formulaText = formulaText.subString(1, formulaText.length() - 1);
+            }
+            cell.setFormula(formulaText);
             sheetModel->setCell(pos, cell);
-            break;
+        }
+        break;
 
         default:
             break;
@@ -827,8 +834,9 @@ SheetEditor::commitDataEntry(void)
     _dataEntryMode = ENTRY_NONE;
     _dataEntryBuffer = "";
 
-    // Refresh display
-    sheetView->updateScreen();
+    // Optimized refresh - only redraw affected cells
+    CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
+    sheetView->updateCells(affected);
     resetPrompt();
 }
 
