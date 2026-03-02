@@ -135,6 +135,11 @@ class SheetEditor {
     void exitCommandLineMode(void);
     void resetCommandInputState(void);
 
+    // data entry helpers
+    DataEntryMode deduceEntryModeFromChar(char c);
+    int isValidInputChar(char c, DataEntryMode mode);
+    CxString getCellDisplayText(CxSheetCell *cell);
+
     // decomposed command input handlers
     void handleCommandEnter(void);
     void handleCommandTab(void);

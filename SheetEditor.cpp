@@ -207,38 +207,17 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         break;
 
         //-------------------------------------------------------------------------------------
-        // Letter keys start text entry mode
+        // Typing starts data entry mode - mode determined by first character
         //-------------------------------------------------------------------------------------
         case CxKeyAction::LOWERCASE_ALPHA:
         case CxKeyAction::UPPERCASE_ALPHA:
-        {
-            char c = keyAction.tag().data()[0];
-            enterDataEntryMode(ENTRY_TEXT, c);
-        }
-        break;
-
-        //-------------------------------------------------------------------------------------
-        // Number keys start number entry mode
-        //-------------------------------------------------------------------------------------
         case CxKeyAction::NUMBER:
-        {
-            char c = keyAction.tag().data()[0];
-            enterDataEntryMode(ENTRY_NUMBER, c);
-        }
-        break;
-
-        //-------------------------------------------------------------------------------------
-        // Symbol keys: = starts formula, $ starts currency, +/- starts number
-        //-------------------------------------------------------------------------------------
         case CxKeyAction::SYMBOL:
         {
             char c = keyAction.tag().data()[0];
-            if (c == '=') {
-                enterDataEntryMode(ENTRY_FORMULA, c);
-            } else if (c == '$') {
-                enterDataEntryMode(ENTRY_CURRENCY, c);
-            } else if (c == '+' || c == '-') {
-                enterDataEntryMode(ENTRY_NUMBER, c);
+            DataEntryMode mode = deduceEntryModeFromChar(c);
+            if (mode != ENTRY_NONE) {
+                enterDataEntryMode(mode, c);
             }
         }
         break;
@@ -626,30 +605,9 @@ SheetEditor::resetPrompt(void)
 
     CxString display = pos.toAddress();
 
-    if (cell != NULL && cell->getType() != CxSheetCell::EMPTY) {
-        display = display + " ";
-
-        switch (cell->getType()) {
-            case CxSheetCell::TEXT:
-                display = display + cell->getText();
-                break;
-
-            case CxSheetCell::DOUBLE:
-            {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
-                display = display + CxString(buf);
-            }
-            break;
-
-            case CxSheetCell::FORMULA:
-                // Show formula with = prefix
-                display = display + "=" + cell->getFormulaText();
-                break;
-
-            default:
-                break;
-        }
+    CxString cellText = getCellDisplayText(cell);
+    if (cellText.length() > 0) {
+        display = display + " " + cellText;
     }
 
     commandLineView->setText(display);
@@ -722,6 +680,96 @@ SheetEditor::CMD_Quit(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::deduceEntryModeFromChar
+//
+// Determine the appropriate data entry mode based on the first character typed.
+//-------------------------------------------------------------------------------------------------
+SheetEditor::DataEntryMode
+SheetEditor::deduceEntryModeFromChar(char c)
+{
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+        return ENTRY_TEXT;
+    } else if (c >= '0' && c <= '9') {
+        return ENTRY_NUMBER;
+    } else if (c == '=') {
+        return ENTRY_FORMULA;
+    } else if (c == '$') {
+        return ENTRY_CURRENCY;
+    } else if (c == '+' || c == '-') {
+        return ENTRY_NUMBER;
+    }
+    // Default to text for other printable characters
+    return ENTRY_TEXT;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::isValidInputChar
+//
+// Check if a character is valid input for the given data entry mode.
+//-------------------------------------------------------------------------------------------------
+int
+SheetEditor::isValidInputChar(char c, DataEntryMode mode)
+{
+    switch (mode) {
+        case ENTRY_TEXT:
+            // Text accepts anything printable
+            return (c >= 32 && c < 127);
+
+        case ENTRY_NUMBER:
+            // Numbers accept digits, decimal point, +/-
+            return (c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-';
+
+        case ENTRY_CURRENCY:
+            // Currency accepts digits, decimal point ($ already in buffer)
+            return (c >= '0' && c <= '9') || c == '.';
+
+        case ENTRY_FORMULA:
+            // Formulas accept anything printable
+            return (c >= 32 && c < 127);
+
+        default:
+            return 0;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::getCellDisplayText
+//
+// Get the display text for a cell. Returns the appropriate string representation
+// based on cell type: raw text for TEXT, formatted number for DOUBLE, formula with
+// = prefix for FORMULA.
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetEditor::getCellDisplayText(CxSheetCell *cell)
+{
+    if (cell == NULL || cell->getType() == CxSheetCell::EMPTY) {
+        return "";
+    }
+
+    switch (cell->getType()) {
+        case CxSheetCell::TEXT:
+            return cell->getText();
+
+        case CxSheetCell::DOUBLE:
+        {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
+            return CxString(buf);
+        }
+
+        case CxSheetCell::FORMULA:
+            // Return formula with = prefix
+            return CxString("=") + cell->getFormulaText();
+
+        default:
+            return "";
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::enterDataEntryMode
 //
 // Enter data entry mode with the specified type and first character.
@@ -762,32 +810,24 @@ SheetEditor::editCurrentCell(void)
     // Enter data entry mode with existing content
     programMode = DATA_ENTRY;
 
+    // Set mode based on cell type
     switch (cell->getType()) {
         case CxSheetCell::TEXT:
             _dataEntryMode = ENTRY_TEXT;
-            _dataEntryBuffer.fromCxString(cell->getText(), 8);
             break;
-
         case CxSheetCell::DOUBLE:
-        {
             _dataEntryMode = ENTRY_NUMBER;
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
-            _dataEntryBuffer.fromCxString(CxString(buf), 8);
-        }
-        break;
-
+            break;
         case CxSheetCell::FORMULA:
             _dataEntryMode = ENTRY_FORMULA;
-            // Include the = prefix for formula editing
-            _dataEntryBuffer.fromCxString(CxString("=") + cell->getFormulaText(), 8);
             break;
-
         default:
             _dataEntryMode = ENTRY_TEXT;
-            _dataEntryBuffer.clear();
             break;
     }
+
+    // Load cell content into buffer (getCellDisplayText handles formatting)
+    _dataEntryBuffer.fromCxString(getCellDisplayText(cell), 8);
 
     updateDataEntryDisplay();
 }
@@ -839,54 +879,15 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
 
         // If buffer is empty, re-deduce entry mode based on character typed
         if (_dataEntryBuffer.isEmpty()) {
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-                _dataEntryMode = ENTRY_TEXT;
-            } else if ((c >= '0' && c <= '9')) {
-                _dataEntryMode = ENTRY_NUMBER;
-            } else if (c == '=') {
-                _dataEntryMode = ENTRY_FORMULA;
-            } else if (c == '$') {
-                _dataEntryMode = ENTRY_CURRENCY;
-            } else if (c == '+' || c == '-') {
-                _dataEntryMode = ENTRY_NUMBER;
-            } else {
-                // Default to text for other printable characters
-                _dataEntryMode = ENTRY_TEXT;
-            }
+            _dataEntryMode = deduceEntryModeFromChar(c);
             _dataEntryBuffer.clear();
             _dataEntryBuffer.append(CxUTFCharacter::fromASCII(c));
             updateDataEntryDisplay();
             return;
         }
 
-        // Validate input based on current entry mode
-        int valid = 0;
-        switch (_dataEntryMode) {
-            case ENTRY_TEXT:
-                // Text accepts anything printable
-                valid = (c >= 32 && c < 127);
-                break;
-
-            case ENTRY_NUMBER:
-                // Numbers accept digits, decimal point, +/-
-                valid = (c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-';
-                break;
-
-            case ENTRY_CURRENCY:
-                // Currency accepts digits, decimal point ($ already in buffer)
-                valid = (c >= '0' && c <= '9') || c == '.';
-                break;
-
-            case ENTRY_FORMULA:
-                // Formulas accept anything printable
-                valid = (c >= 32 && c < 127);
-                break;
-
-            default:
-                break;
-        }
-
-        if (valid) {
+        // Validate and append if valid for current mode
+        if (isValidInputChar(c, _dataEntryMode)) {
             _dataEntryBuffer.append(CxUTFCharacter::fromASCII(c));
             updateDataEntryDisplay();
         }
