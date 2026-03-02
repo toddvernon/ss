@@ -25,8 +25,8 @@
 MessageLineView::MessageLineView(CxScreen *screen, int screenRow)
 : _screen(screen)
 , _screenRow(screenRow)
-, _text("")
 {
+    // _text is default-constructed as empty CxUTFString
 }
 
 
@@ -65,8 +65,9 @@ MessageLineView::updateScreen(void)
     // Clear the line
     CxScreen::clearScreenFromCursorToEndOfLine();
 
-    // Output text
-    printf("%s", _text.data());
+    // Output text (convert UTF string to bytes for output)
+    CxString bytes = _text.toBytes();
+    printf("%s", bytes.data());
 
     fflush(stdout);
 }
@@ -80,17 +81,17 @@ MessageLineView::updateScreen(void)
 void
 MessageLineView::setText(CxString text)
 {
-    _text = text;
+    _text.fromCxString(text, 8);  // Convert to UTF with 8-space tabs
 }
 
 
 //-------------------------------------------------------------------------------------------------
 // MessageLineView::getText
 //
-// Get current text.
+// Get current text (as bytes).
 //-------------------------------------------------------------------------------------------------
 CxString
 MessageLineView::getText(void)
 {
-    return _text;
+    return _text.toBytes();
 }

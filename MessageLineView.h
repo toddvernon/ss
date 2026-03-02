@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include <cx/base/string.h>
+#include <cx/base/utfstring.h>
 #include <cx/screen/screen.h>
 
 #ifndef _MessageLineView_h_
@@ -48,7 +49,7 @@ class MessageLineView {
 
     CxScreen *_screen;
     int _screenRow;
-    CxString _text;
+    CxUTFString _text;
 };
 
 

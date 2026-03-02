@@ -15,6 +15,7 @@
 #include <sys/types.h>
 
 #include <cx/base/string.h>
+#include <cx/base/utfstring.h>
 #include <cx/keyboard/keyboard.h>
 #include <cx/screen/screen.h>
 #include <cx/functor/defercall.h>
@@ -127,7 +128,7 @@ class SheetEditor {
 
     // data entry state
     DataEntryMode _dataEntryMode;
-    CxString _dataEntryBuffer;      // current input being entered
+    CxUTFString _dataEntryBuffer;   // current input being entered (UTF-8 aware)
 
     // helper methods
     void enterCommandLineMode(void);

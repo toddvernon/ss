@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include <cx/base/string.h>
+#include <cx/base/utfstring.h>
 #include <cx/screen/screen.h>
 
 #ifndef _CommandLineView_h_
@@ -55,7 +56,7 @@ class CommandLineView {
 
     CxScreen *_screen;
     int _screenRow;
-    CxString _text;
+    CxUTFString _text;
 };
 
 

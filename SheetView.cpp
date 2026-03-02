@@ -86,9 +86,10 @@ SheetView::updateScreen(void)
     drawCells();
 
     // Draw divider line at bottom of sheet area (last row of our region)
+    // Using UTF-8 box drawing horizontal line character (─)
     CxScreen::placeCursor(_endRow, 0);
     for (int i = 0; i < screen->cols(); i++) {
-        printf("-");
+        printf("\xe2\x94\x80");  // ─ (BOX DRAWINGS LIGHT HORIZONTAL)
     }
 
     fflush(stdout);
@@ -258,6 +259,7 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol, int 
 // SheetView::formatCellValue
 //
 // Format cell contents for display, truncating or padding as needed.
+// Uses CxUTFString for proper UTF-8 character handling.
 //-------------------------------------------------------------------------------------------------
 CxString
 SheetView::formatCellValue(CxSheetCell *cell, int width)
@@ -272,18 +274,18 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
         return result;
     }
 
-    CxString text;
+    CxString rawText;
 
     switch (cell->getType()) {
         case CxSheetCell::TEXT:
-            text = cell->getText();
+            rawText = cell->getText();
             break;
 
         case CxSheetCell::DOUBLE:
             {
                 char buf[64];
                 snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
-                text = CxString(buf);
+                rawText = CxString(buf);
             }
             break;
 
@@ -291,7 +293,7 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
             {
                 char buf[64];
                 snprintf(buf, sizeof(buf), "%g", cell->getEvaluatedValue().value);
-                text = CxString(buf);
+                rawText = CxString(buf);
             }
             break;
 
@@ -304,25 +306,44 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
             return result;
     }
 
-    // Truncate or pad to width
-    int len = text.length();
-    if (len >= width) {
-        // Truncate
-        result = text.subString(0, width);
+    // Convert to UTF string for proper character counting
+    CxUTFString utfText;
+    utfText.fromCxString(rawText, 8);  // 8-space tabs
+
+    int displayLen = utfText.displayWidth();
+
+    if (displayLen >= width) {
+        // Truncate by characters (not bytes) to fit width
+        CxUTFString truncated;
+        int currentWidth = 0;
+        for (int i = 0; i < utfText.charCount() && currentWidth < width; i++) {
+            const CxUTFCharacter *ch = utfText.at(i);
+            if (ch != NULL && currentWidth + ch->displayWidth() <= width) {
+                truncated.append(*ch);
+                currentWidth += ch->displayWidth();
+            } else {
+                break;
+            }
+        }
+        result = truncated.toBytes();
+        // Pad with spaces if truncation left room
+        for (int i = currentWidth; i < width; i++) {
+            result = result + " ";
+        }
     } else {
         // Right-align numbers, left-align text
         if (cell->getType() == CxSheetCell::TEXT) {
-            result = text;
-            for (int i = len; i < width; i++) {
+            result = rawText;
+            for (int i = displayLen; i < width; i++) {
                 result = result + " ";
             }
         } else {
             // Right-align numbers - pad on left
             result = "";
-            for (int i = len; i < width; i++) {
+            for (int i = displayLen; i < width; i++) {
                 result = result + " ";
             }
-            result = result + text;
+            result = result + rawText;
         }
     }
 

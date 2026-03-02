@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <signal.h>
 
+#include <cx/base/utfstring.h>
+#include <cx/base/utfcharacter.h>
 #include "SheetEditor.h"
 
 
@@ -729,7 +731,8 @@ SheetEditor::enterDataEntryMode(DataEntryMode mode, char firstChar)
 {
     programMode = DATA_ENTRY;
     _dataEntryMode = mode;
-    _dataEntryBuffer = CxString(firstChar);
+    _dataEntryBuffer.clear();
+    _dataEntryBuffer.append(CxUTFCharacter::fromASCII(firstChar));
 
     updateDataEntryDisplay();
 }
@@ -751,7 +754,7 @@ SheetEditor::editCurrentCell(void)
     if (cell == NULL || cell->getType() == CxSheetCell::EMPTY) {
         programMode = DATA_ENTRY;
         _dataEntryMode = ENTRY_TEXT;
-        _dataEntryBuffer = "";
+        _dataEntryBuffer.clear();
         updateDataEntryDisplay();
         return;
     }
@@ -762,7 +765,7 @@ SheetEditor::editCurrentCell(void)
     switch (cell->getType()) {
         case CxSheetCell::TEXT:
             _dataEntryMode = ENTRY_TEXT;
-            _dataEntryBuffer = cell->getText();
+            _dataEntryBuffer.fromCxString(cell->getText(), 8);
             break;
 
         case CxSheetCell::DOUBLE:
@@ -770,19 +773,19 @@ SheetEditor::editCurrentCell(void)
             _dataEntryMode = ENTRY_NUMBER;
             char buf[64];
             snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
-            _dataEntryBuffer = CxString(buf);
+            _dataEntryBuffer.fromCxString(CxString(buf), 8);
         }
         break;
 
         case CxSheetCell::FORMULA:
             _dataEntryMode = ENTRY_FORMULA;
             // Include the = prefix for formula editing
-            _dataEntryBuffer = CxString("=") + cell->getFormulaText();
+            _dataEntryBuffer.fromCxString(CxString("=") + cell->getFormulaText(), 8);
             break;
 
         default:
             _dataEntryMode = ENTRY_TEXT;
-            _dataEntryBuffer = "";
+            _dataEntryBuffer.clear();
             break;
     }
 
@@ -802,7 +805,7 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
 
     // ENTER commits the data (or cancels if buffer is empty)
     if (action == CxKeyAction::NEWLINE) {
-        if (_dataEntryBuffer.length() == 0) {
+        if (_dataEntryBuffer.isEmpty()) {
             cancelDataEntry();
         } else {
             commitDataEntry();
@@ -818,8 +821,9 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
 
     // BACKSPACE removes last character (stops at empty buffer)
     if (action == CxKeyAction::BACKSPACE) {
-        if (_dataEntryBuffer.length() > 0) {
-            _dataEntryBuffer = _dataEntryBuffer.subString(0, _dataEntryBuffer.length() - 1);
+        int count = _dataEntryBuffer.charCount();
+        if (count > 0) {
+            _dataEntryBuffer.remove(count - 1, 1);
         }
         updateDataEntryDisplay();
         return;
@@ -834,7 +838,7 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
         char c = keyAction.tag().data()[0];
 
         // If buffer is empty, re-deduce entry mode based on character typed
-        if (_dataEntryBuffer.length() == 0) {
+        if (_dataEntryBuffer.isEmpty()) {
             if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
                 _dataEntryMode = ENTRY_TEXT;
             } else if ((c >= '0' && c <= '9')) {
@@ -849,7 +853,8 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
                 // Default to text for other printable characters
                 _dataEntryMode = ENTRY_TEXT;
             }
-            _dataEntryBuffer = CxString(c);
+            _dataEntryBuffer.clear();
+            _dataEntryBuffer.append(CxUTFCharacter::fromASCII(c));
             updateDataEntryDisplay();
             return;
         }
@@ -882,7 +887,7 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
         }
 
         if (valid) {
-            _dataEntryBuffer = _dataEntryBuffer + CxString(c);
+            _dataEntryBuffer.append(CxUTFCharacter::fromASCII(c));
             updateDataEntryDisplay();
         }
     }
@@ -900,16 +905,19 @@ SheetEditor::commitDataEntry(void)
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
     CxSheetCell cell;
 
+    // Convert UTF buffer to bytes for cell storage
+    CxString bufferText = _dataEntryBuffer.toBytes();
+
     switch (_dataEntryMode) {
         case ENTRY_TEXT:
-            cell.setText(_dataEntryBuffer);
+            cell.setText(bufferText);
             sheetModel->setCell(pos, cell);
             break;
 
         case ENTRY_NUMBER:
         {
             // Parse as double
-            double value = atof(_dataEntryBuffer.data());
+            double value = atof(bufferText.data());
             cell.setDouble(CxDouble(value));
             sheetModel->setCell(pos, cell);
         }
@@ -918,7 +926,7 @@ SheetEditor::commitDataEntry(void)
         case ENTRY_CURRENCY:
         {
             // Skip the $ prefix when parsing
-            CxString numStr = _dataEntryBuffer;
+            CxString numStr = bufferText;
             if (numStr.length() > 0 && numStr.data()[0] == '$') {
                 numStr = numStr.subString(1, numStr.length() - 1);
             }
@@ -932,7 +940,7 @@ SheetEditor::commitDataEntry(void)
         case ENTRY_FORMULA:
         {
             // Strip the leading '=' that's used for spreadsheet notation
-            CxString formulaText = _dataEntryBuffer;
+            CxString formulaText = bufferText;
             if (formulaText.length() > 0 && formulaText.data()[0] == '=') {
                 formulaText = formulaText.subString(1, formulaText.length() - 1);
             }
@@ -948,7 +956,7 @@ SheetEditor::commitDataEntry(void)
     // Return to edit mode
     programMode = EDIT;
     _dataEntryMode = ENTRY_NONE;
-    _dataEntryBuffer = "";
+    _dataEntryBuffer.clear();
 
     // Move cursor down to next row (standard spreadsheet behavior)
     sheetModel->cursorDownRequest();
@@ -971,7 +979,7 @@ SheetEditor::cancelDataEntry(void)
 {
     programMode = EDIT;
     _dataEntryMode = ENTRY_NONE;
-    _dataEntryBuffer = "";
+    _dataEntryBuffer.clear();
 
     resetPrompt();
 }
@@ -986,22 +994,23 @@ void
 SheetEditor::updateDataEntryDisplay(void)
 {
     CxString display;
+    CxString bufferBytes = _dataEntryBuffer.toBytes();
 
     switch (_dataEntryMode) {
         case ENTRY_TEXT:
-            display = CxString("text: ") + _dataEntryBuffer;
+            display = CxString("text: ") + bufferBytes;
             break;
         case ENTRY_NUMBER:
-            display = CxString("number: ") + _dataEntryBuffer;
+            display = CxString("number: ") + bufferBytes;
             break;
         case ENTRY_CURRENCY:
-            display = CxString("currency: ") + _dataEntryBuffer;
+            display = CxString("currency: ") + bufferBytes;
             break;
         case ENTRY_FORMULA:
-            display = CxString("formula: ") + _dataEntryBuffer;
+            display = CxString("formula: ") + bufferBytes;
             break;
         default:
-            display = _dataEntryBuffer;
+            display = bufferBytes;
             break;
     }
 

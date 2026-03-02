@@ -15,6 +15,7 @@
 
 #include <cx/base/string.h>
 #include <cx/base/slist.h>
+#include <cx/base/utfstring.h>
 #include <cx/screen/screen.h>
 #include <cx/sheetModel/sheetModel.h>
 #include <cx/sheetModel/sheetCellCoordinate.h>

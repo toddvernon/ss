@@ -25,8 +25,8 @@
 CommandLineView::CommandLineView(CxScreen *screen, int screenRow)
 : _screen(screen)
 , _screenRow(screenRow)
-, _text("")
 {
+    // _text is default-constructed as empty CxUTFString
 }
 
 
@@ -65,8 +65,9 @@ CommandLineView::updateScreen(void)
     // Clear the line
     CxScreen::clearScreenFromCursorToEndOfLine();
 
-    // Output text
-    printf("%s", _text.data());
+    // Output text (convert UTF string to bytes for output)
+    CxString bytes = _text.toBytes();
+    printf("%s", bytes.data());
 
     fflush(stdout);
 }
@@ -80,29 +81,29 @@ CommandLineView::updateScreen(void)
 void
 CommandLineView::setText(CxString text)
 {
-    _text = text;
+    _text.fromCxString(text, 8);  // Convert to UTF with 8-space tabs
 }
 
 
 //-------------------------------------------------------------------------------------------------
 // CommandLineView::getText
 //
-// Get current text.
+// Get current text (as bytes).
 //-------------------------------------------------------------------------------------------------
 CxString
 CommandLineView::getText(void)
 {
-    return _text;
+    return _text.toBytes();
 }
 
 
 //-------------------------------------------------------------------------------------------------
 // CommandLineView::placeCursor
 //
-// Place cursor at end of text.
+// Place cursor at end of text (using display width for proper UTF-8 positioning).
 //-------------------------------------------------------------------------------------------------
 void
 CommandLineView::placeCursor(void)
 {
-    CxScreen::placeCursor(_screenRow, _text.length());
+    CxScreen::placeCursor(_screenRow, _text.displayWidth());
 }
