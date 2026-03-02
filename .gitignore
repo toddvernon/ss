@@ -1,0 +1,9 @@
+# Build artifacts
+darwin_arm64/
+linux_*/
+
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store
