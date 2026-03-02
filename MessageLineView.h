@@ -17,6 +17,8 @@
 #include <cx/base/utfstring.h>
 #include <cx/screen/screen.h>
 
+class SpreadsheetDefaults;  // forward declaration
+
 #ifndef _MessageLineView_h_
 #define _MessageLineView_h_
 
@@ -33,7 +35,7 @@ class MessageLineView {
 
   public:
 
-    MessageLineView(CxScreen *screen, int screenRow);
+    MessageLineView(CxScreen *screen, SpreadsheetDefaults *defaults, int screenRow);
     ~MessageLineView(void);
 
     void updateScreen(void);
@@ -48,6 +50,7 @@ class MessageLineView {
   private:
 
     CxScreen *_screen;
+    SpreadsheetDefaults *_defaults;
     int _screenRow;
     CxUTFString _text;
 };

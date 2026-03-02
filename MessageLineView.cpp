@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "MessageLineView.h"
+#include "SpreadsheetDefaults.h"
 
 
 //-------------------------------------------------------------------------------------------------
@@ -22,8 +23,9 @@
 //
 // Constructor
 //-------------------------------------------------------------------------------------------------
-MessageLineView::MessageLineView(CxScreen *screen, int screenRow)
+MessageLineView::MessageLineView(CxScreen *screen, SpreadsheetDefaults *defaults, int screenRow)
 : _screen(screen)
+, _defaults(defaults)
 , _screenRow(screenRow)
 {
     // _text is default-constructed as empty CxUTFString
@@ -65,9 +67,15 @@ MessageLineView::updateScreen(void)
     // Clear the line
     CxScreen::clearScreenFromCursorToEndOfLine();
 
+    // Apply message line color
+    _screen->setForegroundColor(_defaults->messageLineTextColor());
+
     // Output text (convert UTF string to bytes for output)
     CxString bytes = _text.toBytes();
     printf("%s", bytes.data());
+
+    // Reset color
+    _screen->resetForegroundColor();
 
     fflush(stdout);
 }

@@ -17,6 +17,8 @@
 #include <cx/base/utfstring.h>
 #include <cx/screen/screen.h>
 
+class SpreadsheetDefaults;  // forward declaration
+
 #ifndef _CommandLineView_h_
 #define _CommandLineView_h_
 
@@ -34,7 +36,7 @@ class CommandLineView {
 
   public:
 
-    CommandLineView(CxScreen *screen, int screenRow);
+    CommandLineView(CxScreen *screen, SpreadsheetDefaults *defaults, int screenRow);
     ~CommandLineView(void);
 
     void updateScreen(void);
@@ -55,6 +57,7 @@ class CommandLineView {
   private:
 
     CxScreen *_screen;
+    SpreadsheetDefaults *_defaults;
     int _screenRow;
     CxUTFString _text;
 };

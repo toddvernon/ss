@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "CommandLineView.h"
+#include "SpreadsheetDefaults.h"
 
 
 //-------------------------------------------------------------------------------------------------
@@ -22,8 +23,9 @@
 //
 // Constructor
 //-------------------------------------------------------------------------------------------------
-CommandLineView::CommandLineView(CxScreen *screen, int screenRow)
+CommandLineView::CommandLineView(CxScreen *screen, SpreadsheetDefaults *defaults, int screenRow)
 : _screen(screen)
+, _defaults(defaults)
 , _screenRow(screenRow)
 {
     // _text is default-constructed as empty CxUTFString
@@ -62,12 +64,18 @@ CommandLineView::updateScreen(void)
 {
     CxScreen::placeCursor(_screenRow, 0);
 
+    // Apply command line colors
+    _defaults->applyCommandLineColors(_screen);
+
     // Clear the line
     CxScreen::clearScreenFromCursorToEndOfLine();
 
     // Output text (convert UTF string to bytes for output)
     CxString bytes = _text.toBytes();
     printf("%s", bytes.data());
+
+    // Reset colors
+    _defaults->resetColors(_screen);
 
     fflush(stdout);
 }

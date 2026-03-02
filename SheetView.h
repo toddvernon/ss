@@ -20,6 +20,8 @@
 #include <cx/sheetModel/sheetModel.h>
 #include <cx/sheetModel/sheetCellCoordinate.h>
 
+class SpreadsheetDefaults;  // forward declaration
+
 #ifndef _SheetView_h_
 #define _SheetView_h_
 
@@ -38,7 +40,8 @@ class SheetView {
 
   public:
 
-    SheetView(CxScreen *scr, CxSheetModel *model, int startRow, int endRow);
+    SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *defaults,
+              int startRow, int endRow);
     ~SheetView(void);
 
     void updateScreen(void);
@@ -47,6 +50,9 @@ class SheetView {
     void updateCells(CxSList<CxSheetCellCoordinate> cells);
     // redraw only the specified cells (if visible)
     // used for optimized updates after data changes
+
+    void updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos);
+    // optimized update for cursor movement - handles scrolling if needed
 
     void recalcForResize(int startRow, int endRow);
     // recalculate layout after terminal resize
@@ -61,6 +67,7 @@ class SheetView {
 
     CxScreen *screen;
     CxSheetModel *sheetModel;
+    SpreadsheetDefaults *_defaults;
 
     int _startRow;          // first screen row for sheet area
     int _endRow;            // last screen row for sheet area

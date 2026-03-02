@@ -17,6 +17,7 @@
 
 #include <cx/base/utfstring.h>
 #include <cx/base/utfcharacter.h>
+#include <cx/base/file.h>
 #include "SheetEditor.h"
 
 
@@ -34,6 +35,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , commandLineView(NULL)
 , messageLineView(NULL)
 , sheetModel(NULL)
+, spreadsheetDefaults(NULL)
 , _filePath(filePath)
 , _activeCompleter(NULL)
 , _cmdInputState(CMD_INPUT_IDLE)
@@ -49,6 +51,29 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     sigemptyset(&blockSet);
     sigaddset(&blockSet, SIGWINCH);
     sigprocmask(SIG_BLOCK, &blockSet, &oldSet);
+
+    //---------------------------------------------------------------------------------------------
+    // Load configuration - check current directory first, then home directory
+    //---------------------------------------------------------------------------------------------
+    spreadsheetDefaults = new SpreadsheetDefaults();
+
+    CxString configPath = ".ssrc";
+    CxFile testFile;
+
+    // Try current directory first
+    if (!testFile.open(configPath, "r")) {
+        // Fall back to home directory
+        CxString homeDir = getenv("HOME");
+        if (homeDir.length()) {
+            configPath = homeDir + "/.ssrc";
+        }
+    } else {
+        testFile.close();
+    }
+
+    if (configPath.length()) {
+        spreadsheetDefaults->loadDefaults(configPath);
+    }
 
     //---------------------------------------------------------------------------------------------
     // Create the sheet model
@@ -74,9 +99,9 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     //---------------------------------------------------------------------------------------------
     // Create views
     //---------------------------------------------------------------------------------------------
-    sheetView = new SheetView(screen, sheetModel, 0, sheetEndRow);
-    commandLineView = new CommandLineView(screen, sheetEndRow + 1);
-    messageLineView = new MessageLineView(screen, sheetEndRow + 2);
+    sheetView = new SheetView(screen, sheetModel, spreadsheetDefaults, 0, sheetEndRow);
+    commandLineView = new CommandLineView(screen, spreadsheetDefaults, sheetEndRow + 1);
+    messageLineView = new MessageLineView(screen, spreadsheetDefaults, sheetEndRow + 2);
 
     //---------------------------------------------------------------------------------------------
     // Initialize command completers
@@ -121,6 +146,9 @@ SheetEditor::~SheetEditor(void)
     }
     if (sheetModel != NULL) {
         delete sheetModel;
+    }
+    if (spreadsheetDefaults != NULL) {
+        delete spreadsheetDefaults;
     }
 }
 
@@ -191,6 +219,9 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         {
             CxString tag = keyAction.tag();
 
+            // Save old position before moving
+            CxSheetCellCoordinate oldPos = sheetModel->getCurrentPosition();
+
             if (tag == "<arrow-up>") {
                 sheetModel->cursorUpRequest();
             } else if (tag == "<arrow-down>") {
@@ -201,7 +232,9 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                 sheetModel->cursorRightRequest();
             }
 
-            sheetView->updateScreen();
+            // Get new position and update display (handles scrolling if needed)
+            CxSheetCellCoordinate newPos = sheetModel->getCurrentPosition();
+            sheetView->updateCursorMove(oldPos, newPos);
             resetPrompt();
         }
         break;

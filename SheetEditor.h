@@ -26,6 +26,7 @@
 #include "CommandLineView.h"
 #include "MessageLineView.h"
 #include "CommandTable.h"
+#include "SpreadsheetDefaults.h"
 
 #ifndef _SheetEditor_h_
 #define _SheetEditor_h_
@@ -110,6 +111,7 @@ class SheetEditor {
     CommandLineView *commandLineView;
     MessageLineView *messageLineView;
     CxSheetModel *sheetModel;
+    SpreadsheetDefaults *spreadsheetDefaults;
 
     CxString _filePath;
 

@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "SheetView.h"
+#include "SpreadsheetDefaults.h"
 
 
 //-------------------------------------------------------------------------------------------------
@@ -23,9 +24,11 @@
 //
 // Constructor
 //-------------------------------------------------------------------------------------------------
-SheetView::SheetView(CxScreen *scr, CxSheetModel *model, int startRow, int endRow)
+SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *defaults,
+                     int startRow, int endRow)
 : screen(scr)
 , sheetModel(model)
+, _defaults(defaults)
 , _startRow(startRow)
 , _endRow(endRow)
 , _rowHeaderWidth(5)        // "9999 " - room for 4-digit row numbers
@@ -88,9 +91,11 @@ SheetView::updateScreen(void)
     // Draw divider line at bottom of sheet area (last row of our region)
     // Using UTF-8 box drawing horizontal line character (─)
     CxScreen::placeCursor(_endRow, 0);
+    screen->setForegroundColor(_defaults->dividerColor());
     for (int i = 0; i < screen->cols(); i++) {
         printf("\xe2\x94\x80");  // ─ (BOX DRAWINGS LIGHT HORIZONTAL)
     }
+    screen->resetForegroundColor();
 
     fflush(stdout);
 }
@@ -138,6 +143,45 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::updateCursorMove
+//
+// Optimized update for cursor movement. Checks if scrolling is needed and does a
+// full redraw if so, otherwise just redraws the old and new cell positions.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos)
+{
+    int newRow = newPos.getRow();
+    int newCol = newPos.getCol();
+
+    int visRows = visibleDataRows();
+    int visCols = visibleDataCols();
+
+    // Check if new position is outside visible area (scrolling needed)
+    int needsScroll = 0;
+    if (newRow < _scrollRowOffset || newRow >= _scrollRowOffset + visRows) {
+        needsScroll = 1;
+    }
+    if (newCol < _scrollColOffset || newCol >= _scrollColOffset + visCols) {
+        needsScroll = 1;
+    }
+
+    if (needsScroll) {
+        // Full redraw - ensureCursorVisible will adjust scroll offsets
+        updateScreen();
+    } else {
+        // Just redraw the two affected cells
+        CxSList<CxSheetCellCoordinate> affectedCells;
+        affectedCells.append(oldPos);
+        if (!(oldPos == newPos)) {
+            affectedCells.append(newPos);
+        }
+        updateCells(affectedCells);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::drawColumnHeaders
 //
 // Draw the column header row (A, B, C, ...)
@@ -146,6 +190,9 @@ void
 SheetView::drawColumnHeaders(void)
 {
     CxScreen::placeCursor(_startRow, 0);
+
+    // Apply header colors
+    _defaults->applyHeaderColors(screen);
 
     // Row header spacer
     for (int i = 0; i < _rowHeaderWidth; i++) {
@@ -171,6 +218,9 @@ SheetView::drawColumnHeaders(void)
             printf(" ");
         }
     }
+
+    // Reset colors
+    _defaults->resetColors(screen);
 }
 
 
@@ -184,6 +234,9 @@ SheetView::drawRowNumbers(void)
 {
     int numRows = visibleDataRows();
 
+    // Apply header colors (same as column headers for visual consistency)
+    _defaults->applyHeaderColors(screen);
+
     for (int r = 0; r < numRows; r++) {
         int screenRow = _startRow + _colHeaderHeight + r;
         int dataRow = r + _scrollRowOffset;
@@ -195,6 +248,9 @@ SheetView::drawRowNumbers(void)
         snprintf(rowNum, sizeof(rowNum), "%4d ", dataRow + 1);
         printf("%s", rowNum);
     }
+
+    // Reset colors
+    _defaults->resetColors(screen);
 }
 
 
@@ -247,10 +303,15 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol, int 
 
     // Draw with highlight if current cell
     if (isHighlighted) {
-        // Inverse video for highlight
-        printf("\033[7m%s\033[0m", content.data());
-    } else {
+        // Apply selected cell colors
+        _defaults->applySelectedCellColors(screen);
         printf("%s", content.data());
+        _defaults->resetColors(screen);
+    } else {
+        // Apply normal cell colors
+        _defaults->applyCellColors(screen);
+        printf("%s", content.data());
+        _defaults->resetColors(screen);
     }
 }
 
