@@ -142,14 +142,21 @@ This applies to the Completer library, CommandTable, and all code in this projec
 - Freeform arg commands transition to argument input mode
 - No-arg commands execute directly on ENTER
 
-### Data Entry Modes (special prefixes, not commands)
-These aren't traditional commands - they're entry mode triggers:
+### Data Entry (direct typing in EDIT mode)
+In EDIT mode, the user can simply start typing to enter data into the current cell.
+**No ESC prefix required.** The first character determines the entry mode:
+
 ```
+<letter>    Text mode - first character is a letter
+<digit/+->  Number mode - first character is digit or +/-
+$           Currency mode - $ followed by digits (formatted with $, commas, 2 decimals)
 =           Formula mode (e.g., =A1+B2)
-$           Currency number mode
-"           Text mode (literal string)
-<digit/+->  Number mode
 ```
+
+While entering data:
+- The command line shows the current input
+- ENTER commits the value to the cell and returns to EDIT mode
+- ESC cancels the entry and returns to EDIT mode (cell unchanged)
 
 ### Command Categories
 
@@ -215,19 +222,19 @@ sheet-next                    Go to next sheet
 sheet-prev                    Go to previous sheet
 ```
 
-### Cell Input Modes
+### Cell Input Modes (triggered by first character in EDIT mode)
 ```
-ESC =           Formula mode - enter formulas like =A:1+B:2
-ESC $           Currency mode - numbers displayed with $ and commas
-ESC <digit/+->  Number mode - plain numeric entry
-ESC "           Text mode - literal text entry
+=           Formula mode - enter formulas like =A1+B2
+$           Currency mode - numbers displayed with $ and commas
+<digit/+->  Number mode - plain numeric entry
+<letter>    Text mode - literal text entry
 ```
 
 ### Cell Hunt Mode
-When in formula mode, pressing ESC enters cell hunt mode for selecting cell references:
+When in formula mode (after typing =), pressing ESC enters cell hunt mode for selecting cell references:
 
 **Entering cell hunt mode:**
-- Cursor jumps back to the cell where command mode was entered
+- Cursor jumps back to the cell where formula entry started
 - The formula display updates in real-time as you navigate
 
 **Navigation and selection:**

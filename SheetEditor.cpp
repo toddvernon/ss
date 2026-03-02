@@ -37,6 +37,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _cmdInputState(CMD_INPUT_IDLE)
 , _currentCommand(NULL)
 , _quitRequested(0)
+, _dataEntryMode(ENTRY_NONE)
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -147,6 +148,10 @@ SheetEditor::run(void)
             case COMMANDLINE:
                 focusCommandPrompt(keyAction);
                 break;
+
+            case DATA_ENTRY:
+                focusDataEntry(keyAction);
+                break;
         }
 
         // Check if quit was requested
@@ -161,6 +166,7 @@ SheetEditor::run(void)
 // SheetEditor::focusEditor
 //
 // Handle keyboard input when in EDIT mode (cell navigation).
+// Typing starts data entry mode. ESC enters command mode.
 // Returns 1 if quit requested, 0 otherwise.
 //-------------------------------------------------------------------------------------------------
 int
@@ -195,6 +201,43 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
 
             sheetView->updateScreen();
             resetPrompt();
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Letter keys start text entry mode
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::LOWERCASE_ALPHA:
+        case CxKeyAction::UPPERCASE_ALPHA:
+        {
+            char c = keyAction.tag().data()[0];
+            enterDataEntryMode(ENTRY_TEXT, c);
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Number keys start number entry mode
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::NUMBER:
+        {
+            char c = keyAction.tag().data()[0];
+            enterDataEntryMode(ENTRY_NUMBER, c);
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Symbol keys: = starts formula, $ starts currency, +/- starts number
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::SYMBOL:
+        {
+            char c = keyAction.tag().data()[0];
+            if (c == '=') {
+                enterDataEntryMode(ENTRY_FORMULA, c);
+            } else if (c == '$') {
+                enterDataEntryMode(ENTRY_CURRENCY, c);
+            } else if (c == '+' || c == '-') {
+                enterDataEntryMode(ENTRY_NUMBER, c);
+            }
         }
         break;
 
@@ -355,10 +398,9 @@ SheetEditor::handleArgumentModeInput(CxKeyAction keyAction)
     if (action == CxKeyAction::LOWERCASE_ALPHA ||
         action == CxKeyAction::UPPERCASE_ALPHA ||
         action == CxKeyAction::SYMBOL ||
-        action == CxKeyAction::NUMBER ||
-        action == CxKeyAction::CONTROL) {
+        action == CxKeyAction::NUMBER) {
 
-        char c = keyAction.definition().data()[0];
+        char c = keyAction.tag().data()[0];
         if (c >= 32 && c < 127) {
             _argBuffer = _argBuffer + CxString(c);
             updateArgumentDisplay();
@@ -411,7 +453,7 @@ SheetEditor::handleCommandTab(void)
 void
 SheetEditor::handleCommandChar(CxKeyAction keyAction)
 {
-    char c = keyAction.definition().data()[0];
+    char c = keyAction.tag().data()[0];
     _cmdBuffer = _cmdBuffer + CxString(c);
 
     CompleterResult result = _commandCompleter.processChar(_cmdBuffer, c);
@@ -633,4 +675,208 @@ void
 SheetEditor::CMD_Quit(CxString commandLine)
 {
     _quitRequested = 1;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::enterDataEntryMode
+//
+// Enter data entry mode with the specified type and first character.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::enterDataEntryMode(DataEntryMode mode, char firstChar)
+{
+    programMode = DATA_ENTRY;
+    _dataEntryMode = mode;
+    _dataEntryBuffer = CxString(firstChar);
+
+    updateDataEntryDisplay();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::focusDataEntry
+//
+// Handle keyboard input when in DATA_ENTRY mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::focusDataEntry(CxKeyAction keyAction)
+{
+    int action = keyAction.actionType();
+
+    // ENTER commits the data
+    if (action == CxKeyAction::NEWLINE) {
+        commitDataEntry();
+        return;
+    }
+
+    // ESC cancels data entry (unless in formula mode where it enters cell hunt - future)
+    if (action == CxKeyAction::COMMAND) {
+        cancelDataEntry();
+        return;
+    }
+
+    // BACKSPACE removes last character
+    if (action == CxKeyAction::BACKSPACE) {
+        if (_dataEntryBuffer.length() > 0) {
+            _dataEntryBuffer = _dataEntryBuffer.subString(0, _dataEntryBuffer.length() - 1);
+            // If buffer is empty, cancel entry
+            if (_dataEntryBuffer.length() == 0) {
+                cancelDataEntry();
+                return;
+            }
+        }
+        updateDataEntryDisplay();
+        return;
+    }
+
+    // Character input - append to buffer
+    if (action == CxKeyAction::LOWERCASE_ALPHA ||
+        action == CxKeyAction::UPPERCASE_ALPHA ||
+        action == CxKeyAction::SYMBOL ||
+        action == CxKeyAction::NUMBER) {
+
+        char c = keyAction.tag().data()[0];
+
+        // Validate input based on entry mode
+        int valid = 0;
+        switch (_dataEntryMode) {
+            case ENTRY_TEXT:
+                // Text accepts anything printable
+                valid = (c >= 32 && c < 127);
+                break;
+
+            case ENTRY_NUMBER:
+                // Numbers accept digits, decimal point, +/-
+                valid = (c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-';
+                break;
+
+            case ENTRY_CURRENCY:
+                // Currency accepts digits, decimal point ($ already in buffer)
+                valid = (c >= '0' && c <= '9') || c == '.';
+                break;
+
+            case ENTRY_FORMULA:
+                // Formulas accept anything printable
+                valid = (c >= 32 && c < 127);
+                break;
+
+            default:
+                break;
+        }
+
+        if (valid) {
+            _dataEntryBuffer = _dataEntryBuffer + CxString(c);
+            updateDataEntryDisplay();
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::commitDataEntry
+//
+// Commit the entered data to the current cell.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::commitDataEntry(void)
+{
+    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+    CxSheetCell cell;
+
+    switch (_dataEntryMode) {
+        case ENTRY_TEXT:
+            cell.setText(_dataEntryBuffer);
+            sheetModel->setCell(pos, cell);
+            break;
+
+        case ENTRY_NUMBER:
+        {
+            // Parse as double
+            double value = atof(_dataEntryBuffer.data());
+            cell.setDouble(CxDouble(value));
+            sheetModel->setCell(pos, cell);
+        }
+        break;
+
+        case ENTRY_CURRENCY:
+        {
+            // Skip the $ prefix when parsing
+            CxString numStr = _dataEntryBuffer;
+            if (numStr.length() > 0 && numStr.data()[0] == '$') {
+                numStr = numStr.subString(1, numStr.length() - 1);
+            }
+            double value = atof(numStr.data());
+            cell.setDouble(CxDouble(value));
+            sheetModel->setCell(pos, cell);
+            // TODO: Set currency formatting flag when formatting is implemented
+        }
+        break;
+
+        case ENTRY_FORMULA:
+            cell.setFormula(_dataEntryBuffer);
+            sheetModel->setCell(pos, cell);
+            break;
+
+        default:
+            break;
+    }
+
+    // Return to edit mode
+    programMode = EDIT;
+    _dataEntryMode = ENTRY_NONE;
+    _dataEntryBuffer = "";
+
+    // Refresh display
+    sheetView->updateScreen();
+    resetPrompt();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::cancelDataEntry
+//
+// Cancel data entry and return to edit mode without changing the cell.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::cancelDataEntry(void)
+{
+    programMode = EDIT;
+    _dataEntryMode = ENTRY_NONE;
+    _dataEntryBuffer = "";
+
+    resetPrompt();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::updateDataEntryDisplay
+//
+// Update the command line to show the current data entry.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::updateDataEntryDisplay(void)
+{
+    CxString display;
+
+    switch (_dataEntryMode) {
+        case ENTRY_TEXT:
+            display = CxString("text: ") + _dataEntryBuffer;
+            break;
+        case ENTRY_NUMBER:
+            display = CxString("number: ") + _dataEntryBuffer;
+            break;
+        case ENTRY_CURRENCY:
+            display = CxString("currency: ") + _dataEntryBuffer;
+            break;
+        case ENTRY_FORMULA:
+            display = CxString("formula: ") + _dataEntryBuffer;
+            break;
+        default:
+            display = _dataEntryBuffer;
+            break;
+    }
+
+    commandLineView->setText(display);
+    commandLineView->updateScreen();
 }

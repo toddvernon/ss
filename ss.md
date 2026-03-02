@@ -30,58 +30,59 @@ at some point to see multiple sheets or different parts of the same sheet.
 
 5) the program is generally in edit mode (like cm).  The arrow keys move a highlight box around cell to cell horizantally and verticlly
 
-6) The command structure should patterm cm with regards to heavy use of command completion and a command layout that basically mimics 
+6) The command structure should patterm cm with regards to heavy use of command completion and a command layout that basically mimics
 a menu sytem but in the commandline. See cm and cx/commandompleter.
 
 7) When the cursor moves off the right side of the screen the entire ss area scroll with it like a typical ss. same for scrolling
 left and up and down
 
-8) The ESC key enters command mode and jumps the cursor to the the commandline.  
+8) **Data Entry (direct typing in EDIT mode):**
+   In EDIT mode, the user can simply start typing to enter data into the current cell. No ESC prefix required.
+   The first character determines the entry mode:
 
-9) Once in command mode, 
-	the command line offers up the top level possible command prefixes (see the cm app).  This will likely be
-	"command>     = | " | <$><number> | file- | view-"  similar to the command structure of cm.
+   - **Text entry:** First character is a letter → enters text mode
+   - **Number entry:** First character is a digit or +/- → enters number mode
+   - **Currency entry:** First character is $ followed by digits → enters currency mode (formatted with $ prefix, 2 decimal places, commas)
+   - **Formula entry:** First character is = → enters formula mode
 
-	Onec in command mode, another <ESC> exits command mode aborting the command like cm, with the exception of formula mode described next
+   While entering data:
+   - The command line shows the current input
+   - ENTER commits the value to the cell and returns to EDIT mode
+   - ESC cancels the entry and returns to EDIT mode (cell unchanged)
 
-##	<ESC> =
+9) **ESC key enters command mode** and jumps the cursor to the command line.
+   The command line offers up command prefixes (see the cm app): "command> file- | view- | format-"
+   Another ESC exits command mode, aborting the command and returning to EDIT mode.
 
-	In formula mode the user can enter a formula as is customary.  However if the ESC key is pressed in formula mode the program
-	enters cell hunt mode for selecting cell references.
+## Formula Mode and Cell Hunt
 
-	**Entering cell hunt mode:**
-	- Cursor jumps back to the cell where command mode was entered
-	- The formula display updates in real-time as you navigate
+   When entering a formula (starting with =), if the user presses ESC the program enters **cell hunt mode**
+   for selecting cell references.
 
-	**Navigation and selection:**
-	- Arrow keys move the highlight cell-to-cell
-	- The current cell reference appears in the formula in real-time as you move
-	- SPACE sets the start of a range (cell is anchored)
-	- After SPACE, arrow keys extend the range (e.g., $A$1:$C$3)
-	- ENTER finalizes the selection (single cell or range) and returns to formula editing
-	- ESC cancels cell hunt mode, discards any selection, returns to formula editing
+   **Entering cell hunt mode:**
+   - Cursor jumps back to the cell where data entry started
+   - The formula display updates in real-time as you navigate
 
-	**Reference format:**
-	- All references inserted via cell hunt are absolute by default (e.g., $A$1, $A$1:$C$3)
-	- User must manually edit the formula to change to relative references (remove $ signs)
+   **Navigation and selection:**
+   - Arrow keys move the highlight cell-to-cell
+   - The current cell reference appears in the formula in real-time as you move
+   - SPACE sets the start of a range (cell is anchored)
+   - After SPACE, arrow keys extend the range (e.g., $A$1:$C$3)
+   - ENTER finalizes the selection (single cell or range) and returns to formula editing
+   - ESC cancels cell hunt mode, discards any selection, returns to formula editing
 
-	**Example flow:**
-	1. User types = to enter formula mode, types SUM(
-	2. User presses ESC to enter cell hunt mode
-	3. User navigates to A1, formula shows =SUM($A$1
-	4. User presses SPACE to anchor range start
-	5. User navigates to A10, formula shows =SUM($A$1:$A$10
-	6. User presses ENTER, returns to formula mode with =SUM($A$1:$A$10
-	7. User types ) to complete: =SUM($A$1:$A$10)
+   **Reference format:**
+   - All references inserted via cell hunt are absolute by default (e.g., $A$1, $A$1:$C$3)
+   - User must manually edit the formula to change to relative references (remove $ signs)
 
-## <ESC> <$><digits | +->
-	if the user enters <number> meaning a +- or digit, then the user is in number mode.  the program should accept only numbers.  However
-	if the user enters a $ first then the cell will be set dollar formatting.  Still a number but prepended with $ and the format will
-	assumed to be two digits after the decimal point and commas in traditinal places when displayed in the cell.  Not required for 
-	entry however. when the user types <return> the number is set in the cell and cell is type number.
-
-## <ESC> <letter> will follow the conventions of command completion used in cm.
-	for instance "command> file-    | load | save" , etc
+   **Example flow:**
+   1. User types = to enter formula mode, types SUM(
+   2. User presses ESC to enter cell hunt mode
+   3. User navigates to A1, formula shows =SUM($A$1
+   4. User presses SPACE to anchor range start
+   5. User navigates to A10, formula shows =SUM($A$1:$A$10
+   6. User presses ENTER, returns to formula mode with =SUM($A$1:$A$10
+   7. User types ) to complete: =SUM($A$1:$A$10)
 
 10) unlike cm this program is targeted only at linux and macOS and does not have to support older platforms.  For this reason it will use
 the utf versions of CxString as it will use symbols and line drawing symbols in that character set.
