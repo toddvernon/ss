@@ -134,6 +134,7 @@ class SheetEditor {
     // data entry state
     DataEntryMode _dataEntryMode;
     CxUTFString _dataEntryBuffer;   // current input being entered (UTF-8 aware)
+    int _dataEntryCursorPos;        // cursor position within buffer (0 = start)
 
     // helper methods
     void enterCommandLineMode(void);

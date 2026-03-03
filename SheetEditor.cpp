@@ -986,6 +986,7 @@ SheetEditor::editCurrentCell(void)
         programMode = DATA_ENTRY;
         _dataEntryMode = ENTRY_TEXT;
         _dataEntryBuffer.clear();
+        _dataEntryCursorPos = 0;
         updateDataEntryDisplay();
         return;
     }
@@ -1011,6 +1012,9 @@ SheetEditor::editCurrentCell(void)
 
     // Load cell content into buffer (getCellDisplayText handles formatting)
     _dataEntryBuffer.fromCxString(getCellDisplayText(cell), 8);
+
+    // Position cursor at end of existing content
+    _dataEntryCursorPos = _dataEntryBuffer.charCount();
 
     updateDataEntryDisplay();
 }
@@ -1042,11 +1046,29 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
         return;
     }
 
-    // BACKSPACE removes last character (stops at empty buffer)
+    // Arrow keys move cursor within buffer
+    if (action == CxKeyAction::CURSOR) {
+        CxString tag = keyAction.tag();
+        if (tag == "<arrow-left>") {
+            if (_dataEntryCursorPos > 0) {
+                _dataEntryCursorPos--;
+                updateDataEntryDisplay();
+            }
+        } else if (tag == "<arrow-right>") {
+            if (_dataEntryCursorPos < _dataEntryBuffer.charCount()) {
+                _dataEntryCursorPos++;
+                updateDataEntryDisplay();
+            }
+        }
+        // UP/DOWN could be used to cancel and move cells, but ignore for now
+        return;
+    }
+
+    // BACKSPACE removes character before cursor (stops at start of buffer)
     if (action == CxKeyAction::BACKSPACE) {
-        int count = _dataEntryBuffer.charCount();
-        if (count > 0) {
-            _dataEntryBuffer.remove(count - 1, 1);
+        if (_dataEntryCursorPos > 0) {
+            _dataEntryBuffer.remove(_dataEntryCursorPos - 1, 1);
+            _dataEntryCursorPos--;
         }
         updateDataEntryDisplay();
         return;
@@ -1065,13 +1087,15 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
             _dataEntryMode = deduceEntryModeFromChar(c);
             _dataEntryBuffer.clear();
             _dataEntryBuffer.append(CxUTFCharacter::fromASCII(c));
+            _dataEntryCursorPos = 1;
             updateDataEntryDisplay();
             return;
         }
 
-        // Validate and append if valid for current mode
+        // Validate and insert at cursor position if valid for current mode
         if (isValidInputChar(c, _dataEntryMode)) {
-            _dataEntryBuffer.append(CxUTFCharacter::fromASCII(c));
+            _dataEntryBuffer.insert(_dataEntryCursorPos, CxUTFCharacter::fromASCII(c));
+            _dataEntryCursorPos++;
             updateDataEntryDisplay();
         }
     }
@@ -1179,27 +1203,33 @@ SheetEditor::updateDataEntryDisplay(void)
 {
     CxString display;
     CxString bufferBytes = _dataEntryBuffer.toBytes();
+    int prefixLen = 0;
 
     switch (_dataEntryMode) {
         case ENTRY_TEXT:
             display = CxString("text: ") + bufferBytes;
+            prefixLen = 6;  // "text: "
             break;
         case ENTRY_NUMBER:
             display = CxString("number: ") + bufferBytes;
+            prefixLen = 8;  // "number: "
             break;
         case ENTRY_CURRENCY:
             display = CxString("currency: ") + bufferBytes;
+            prefixLen = 10;  // "currency: "
             break;
         case ENTRY_FORMULA:
             display = CxString("formula: ") + bufferBytes;
+            prefixLen = 9;  // "formula: "
             break;
         default:
             display = bufferBytes;
+            prefixLen = 0;
             break;
     }
 
     commandLineView->setText(display);
     commandLineView->updateScreen();
-    commandLineView->placeCursor();
+    commandLineView->placeCursorAt(prefixLen + _dataEntryCursorPos);
     fflush(stdout);
 }
