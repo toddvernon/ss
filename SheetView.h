@@ -135,6 +135,9 @@ class SheetView {
 
     CxString formatCellValue(CxSheetCell *cell, int width);
     // format cell contents for display
+
+    CxString formatSymbolFill(CxString symbolType, int width);
+    // format symbol fill cells (box drawing)
 };
 
 

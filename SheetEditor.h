@@ -112,6 +112,7 @@ class SheetEditor {
     void CMD_Quit(CxString commandLine);
     void CMD_Load(CxString commandLine);
     void CMD_Save(CxString commandLine);
+    void CMD_InsertSymbol(CxString commandLine);
 
     ProgramMode programMode;
 
@@ -129,6 +130,7 @@ class SheetEditor {
 
     // command completion
     Completer       _commandCompleter;
+    Completer       _symbolCompleter;   // for insert-symbol argument completion
     Completer      *_activeCompleter;
 
     // command input state

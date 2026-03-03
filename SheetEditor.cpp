@@ -291,6 +291,22 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         break;
 
         //-------------------------------------------------------------------------------------
+        // Backspace/Delete clears cell contents
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::BACKSPACE:
+        {
+            CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+            CxSheetCell *cell = sheetModel->getCellPtr(pos);
+            if (cell != NULL) {
+                cell->clear();
+                cell->removeAppAttribute("symbolFill");
+                sheetView->updateScreen();
+                resetPrompt();
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
         // Control key sequences (Ctrl-X prefix commands)
         //-------------------------------------------------------------------------------------
         case CxKeyAction::CONTROL:
@@ -474,7 +490,22 @@ SheetEditor::handleArgumentModeInput(CxKeyAction keyAction)
 
     // ENTER - execute command with argument
     if (action == CxKeyAction::NEWLINE) {
+        // If using completer, try to select on enter
+        if (_activeCompleter != NULL) {
+            CompleterResult result = _activeCompleter->processEnter(_argBuffer);
+            if (result.getStatus() == COMPLETER_SELECTED) {
+                _argBuffer = result.getInput();
+            }
+        }
         executeCurrentCommand();
+        return;
+    }
+
+    // TAB - cycle through matches (if using completer)
+    if (action == CxKeyAction::TAB && _activeCompleter != NULL) {
+        CompleterResult result = _activeCompleter->processTab(_argBuffer);
+        _argBuffer = result.getInput();
+        updateArgumentDisplay();
         return;
     }
 
@@ -495,8 +526,17 @@ SheetEditor::handleArgumentModeInput(CxKeyAction keyAction)
 
         char c = keyAction.tag().data()[0];
         if (c >= 32 && c < 127) {
-            _argBuffer = _argBuffer + CxString(c);
-            updateArgumentDisplay();
+            // If using completer, validate against it
+            if (_activeCompleter != NULL) {
+                CompleterResult result = _activeCompleter->processChar(_argBuffer, c);
+                if (result.getStatus() != COMPLETER_NO_MATCH) {
+                    _argBuffer = result.getInput();
+                    updateArgumentDisplay();
+                }
+            } else {
+                _argBuffer = _argBuffer + CxString(c);
+                updateArgumentDisplay();
+            }
         }
     }
 }
@@ -595,6 +635,14 @@ SheetEditor::selectCommand(CommandEntry *cmd)
         // Command needs an argument - switch to argument mode
         _cmdInputState = CMD_INPUT_ARGUMENT;
         _argBuffer = "";
+
+        // Use symbol completer for SYMBOL_ARG commands
+        if (cmd->flags & CMD_FLAG_SYMBOL_ARG) {
+            _activeCompleter = &_symbolCompleter;
+        } else {
+            _activeCompleter = NULL;  // freeform text entry
+        }
+
         updateArgumentDisplay();
     } else {
         // No argument needed - execute immediately
@@ -695,6 +743,27 @@ SheetEditor::updateArgumentDisplay(void)
 
     CxString display = prefix + _argBuffer;
 
+    // Show completion hints if using a completer
+    if (_activeCompleter != NULL) {
+        CxString matchNames[10];
+        int matchCount = _activeCompleter->findMatches(_argBuffer, matchNames, 10);
+
+        // Don't show hints if exact match
+        int isExactMatch = (matchCount == 1 && _argBuffer == matchNames[0]);
+
+        if (matchCount > 0 && !isExactMatch) {
+            display = display + "  ";
+            for (int i = 0; i < matchCount && i < 5; i++) {
+                display = display + "| ";
+                display = display + matchNames[i];
+                display = display + " ";
+            }
+            if (matchCount > 5) {
+                display = display + "...";
+            }
+        }
+    }
+
     commandLineView->setText(display);
     commandLineView->updateScreen();
 
@@ -719,6 +788,18 @@ SheetEditor::initCommandCompleters(void)
             &commandTable[i]
         );
     }
+
+    // Initialize symbol type completer for insert-symbol command
+    _symbolCompleter.addCandidate("horizontal", NULL, NULL);
+    _symbolCompleter.addCandidate("vertical", NULL, NULL);
+    _symbolCompleter.addCandidate("upper-left", NULL, NULL);
+    _symbolCompleter.addCandidate("upper-right", NULL, NULL);
+    _symbolCompleter.addCandidate("lower-left", NULL, NULL);
+    _symbolCompleter.addCandidate("lower-right", NULL, NULL);
+    _symbolCompleter.addCandidate("left-tee", NULL, NULL);
+    _symbolCompleter.addCandidate("right-tee", NULL, NULL);
+    _symbolCompleter.addCandidate("upper-tee", NULL, NULL);
+    _symbolCompleter.addCandidate("lower-tee", NULL, NULL);
 }
 
 
@@ -875,6 +956,52 @@ SheetEditor::CMD_Save(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_InsertSymbol
+//
+// Insert a box drawing symbol fill into the current cell.
+// Valid types: horizontal, vertical, upper-left, upper-right, lower-left, lower-right,
+//              left-tee, right-tee, upper-tee, lower-tee
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_InsertSymbol(CxString commandLine)
+{
+    CxString symbolType = commandLine;
+    symbolType.stripLeading(" \t");
+    symbolType.stripTrailing(" \t\n\r");
+
+    // Validate symbol type
+    if (symbolType != "horizontal" && symbolType != "vertical" &&
+        symbolType != "upper-left" && symbolType != "upper-right" &&
+        symbolType != "lower-left" && symbolType != "lower-right" &&
+        symbolType != "left-tee" && symbolType != "right-tee" &&
+        symbolType != "upper-tee" && symbolType != "lower-tee") {
+
+        setMessage(CxString("Unknown symbol type: ") + symbolType);
+        return;
+    }
+
+    // Get current cell and set the symbol fill attribute
+    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+    CxSheetCell *cell = sheetModel->getCellPtr(pos);
+
+    if (cell == NULL) {
+        // Cell doesn't exist yet, create it
+        CxSheetCell newCell;
+        newCell.setAppAttribute("symbolFill", symbolType.data());
+        sheetModel->setCell(pos, newCell);
+    } else {
+        // Cell exists, set the attribute (clears any existing content type)
+        cell->clear();
+        cell->setAppAttribute("symbolFill", symbolType.data());
+    }
+
+    // Update display
+    sheetView->updateScreen();
+    setMessage(CxString("Inserted: ") + symbolType);
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::deduceEntryModeFromChar
 //
 // Determine the appropriate data entry mode based on the first character typed.
@@ -992,6 +1119,12 @@ SheetEditor::editCurrentCell(void)
 {
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
     CxSheetCell *cell = sheetModel->getCellPtr(pos);
+
+    // Symbol fill cells cannot be edited - ignore Enter key
+    // User can type to replace, or use insert-symbol to change type
+    if (cell != NULL && cell->hasAppAttribute("symbolFill")) {
+        return;
+    }
 
     // If cell is empty, just enter text mode with empty buffer
     if (cell == NULL || cell->getType() == CxSheetCell::EMPTY) {
@@ -1440,28 +1573,19 @@ SheetEditor::updateCellHuntDisplay(void)
 //-------------------------------------------------------------------------------------------------
 // SheetEditor::buildCellHuntReference
 //
-// Build the cell reference string. Returns absolute format like $A$1 for single cell,
-// or $A$1:$C$3 for a range.
+// Build the cell reference string. Returns relative format like A1 for single cell,
+// or A1:C3 for a range. User can manually add $ for absolute references.
 //-------------------------------------------------------------------------------------------------
 CxString
 SheetEditor::buildCellHuntReference(void)
 {
-    // Make copies and set absolute flags for cell hunt references
-    CxSheetCellCoordinate currentCopy = _cellHuntCurrentPos;
-    currentCopy.setRowAbsolute(1);
-    currentCopy.setColAbsolute(1);
-
     if (_cellHuntRangeActive) {
         // Range reference
-        CxSheetCellCoordinate anchorCopy = _cellHuntAnchorPos;
-        anchorCopy.setRowAbsolute(1);
-        anchorCopy.setColAbsolute(1);
-
-        CxString anchorAddr = anchorCopy.toAbsoluteAddress();
-        CxString currentAddr = currentCopy.toAbsoluteAddress();
+        CxString anchorAddr = _cellHuntAnchorPos.toAddress();
+        CxString currentAddr = _cellHuntCurrentPos.toAddress();
         return anchorAddr + ":" + currentAddr;
     } else {
         // Single cell reference
-        return currentCopy.toAbsoluteAddress();
+        return _cellHuntCurrentPos.toAddress();
     }
 }

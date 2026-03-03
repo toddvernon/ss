@@ -45,6 +45,14 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_Quit,
       NULL },
 
+    //--- insert- -------------------------------------------------------------
+    { "insert-symbol",
+      "<type>",
+      "Insert box drawing symbol",
+      CMD_FLAG_NEEDS_ARG | CMD_FLAG_SYMBOL_ARG,
+      &SheetEditor::CMD_InsertSymbol,
+      NULL },
+
     //--- end -----------------------------------------------------------------
     { NULL, NULL, NULL, 0, NULL, NULL }
 };

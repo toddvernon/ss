@@ -331,6 +331,7 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 //
 // Format cell contents for display, truncating or padding as needed.
 // Uses CxUTFString for proper UTF-8 character handling.
+// Handles symbol fill cells (box drawing) via appAttribute "symbolFill".
 //-------------------------------------------------------------------------------------------------
 CxString
 SheetView::formatCellValue(CxSheetCell *cell, int width)
@@ -343,6 +344,12 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
             result = result + " ";
         }
         return result;
+    }
+
+    // Check for symbol fill cells
+    if (cell->hasAppAttribute("symbolFill")) {
+        CxString symbolType = cell->getAppAttributeString("symbolFill");
+        return formatSymbolFill(symbolType, width);
     }
 
     CxString rawText;
@@ -415,6 +422,144 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
                 result = result + " ";
             }
             result = result + rawText;
+        }
+    }
+
+    return result;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::formatSymbolFill
+//
+// Format symbol fill cells (box drawing). Symbol types:
+//   horizontal:   ────────── (fill with ─)
+//   vertical:     │          (single │, pad with spaces)
+//   upper-left:   ┌──────── (corner then ─ fill)
+//   upper-right:  ────────┐ (─ fill then corner)
+//   lower-left:   └──────── (corner then ─ fill)
+//   lower-right:  ────────┘ (─ fill then corner)
+//   left-tee:     ├          (single char)
+//   right-tee:    ┤          (single char)
+//   upper-tee:    ────┬──── (centered T with ─ fill)
+//   lower-tee:    ────┴──── (centered T with ─ fill)
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::formatSymbolFill(CxString symbolType, int width)
+{
+    CxString result;
+
+    // Box drawing characters (UTF-8)
+    const char* horizLine = "\xe2\x94\x80";     // ─
+    const char* vertLine = "\xe2\x94\x82";      // │
+    const char* upperLeft = "\xe2\x94\x8c";     // ┌
+    const char* upperRight = "\xe2\x94\x90";    // ┐
+    const char* lowerLeft = "\xe2\x94\x94";     // └
+    const char* lowerRight = "\xe2\x94\x98";    // ┘
+    const char* leftTee = "\xe2\x94\x9c";       // ├
+    const char* rightTee = "\xe2\x94\xa4";      // ┤
+    const char* upperTee = "\xe2\x94\xac";      // ┬
+    const char* lowerTee = "\xe2\x94\xb4";      // ┴
+
+    if (symbolType == "horizontal") {
+        // Fill entire width with horizontal line
+        for (int i = 0; i < width; i++) {
+            result = result + horizLine;
+        }
+    }
+    else if (symbolType == "vertical") {
+        // Single vertical line, pad rest with spaces
+        result = vertLine;
+        for (int i = 1; i < width; i++) {
+            result = result + " ";
+        }
+    }
+    else if (symbolType == "upper-left") {
+        // Corner then horizontal fill
+        if (width >= 1) {
+            result = upperLeft;
+            for (int i = 1; i < width; i++) {
+                result = result + horizLine;
+            }
+        }
+    }
+    else if (symbolType == "upper-right") {
+        // Horizontal fill then corner
+        if (width >= 1) {
+            for (int i = 0; i < width - 1; i++) {
+                result = result + horizLine;
+            }
+            result = result + upperRight;
+        }
+    }
+    else if (symbolType == "lower-left") {
+        // Corner then horizontal fill
+        if (width >= 1) {
+            result = lowerLeft;
+            for (int i = 1; i < width; i++) {
+                result = result + horizLine;
+            }
+        }
+    }
+    else if (symbolType == "lower-right") {
+        // Horizontal fill then corner
+        if (width >= 1) {
+            for (int i = 0; i < width - 1; i++) {
+                result = result + horizLine;
+            }
+            result = result + lowerRight;
+        }
+    }
+    else if (symbolType == "left-tee") {
+        // Single left tee, pad rest with spaces
+        result = leftTee;
+        for (int i = 1; i < width; i++) {
+            result = result + " ";
+        }
+    }
+    else if (symbolType == "right-tee") {
+        // Single right tee, pad rest with spaces
+        result = rightTee;
+        for (int i = 1; i < width; i++) {
+            result = result + " ";
+        }
+    }
+    else if (symbolType == "upper-tee") {
+        // Centered T with horizontal fill on both sides
+        if (width == 1) {
+            result = upperTee;
+        } else {
+            int leftCount = (width - 1) / 2;
+            int rightCount = width - 1 - leftCount;
+            for (int i = 0; i < leftCount; i++) {
+                result = result + horizLine;
+            }
+            result = result + upperTee;
+            for (int i = 0; i < rightCount; i++) {
+                result = result + horizLine;
+            }
+        }
+    }
+    else if (symbolType == "lower-tee") {
+        // Centered T with horizontal fill on both sides
+        if (width == 1) {
+            result = lowerTee;
+        } else {
+            int leftCount = (width - 1) / 2;
+            int rightCount = width - 1 - leftCount;
+            for (int i = 0; i < leftCount; i++) {
+                result = result + horizLine;
+            }
+            result = result + lowerTee;
+            for (int i = 0; i < rightCount; i++) {
+                result = result + horizLine;
+            }
+        }
+    }
+    else {
+        // Unknown symbol type - fill with spaces
+        for (int i = 0; i < width; i++) {
+            result = result + " ";
         }
     }
 
