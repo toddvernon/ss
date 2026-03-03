@@ -67,11 +67,19 @@ public:
     // Row number color
     CxColor *rowNumberTextColor(void);
 
+    // Cell hunt colors (for formula cell reference selection)
+    CxColor *cellHuntTextColor(void);
+    CxColor *cellHuntBackgroundColor(void);
+    CxColor *cellHuntRangeTextColor(void);
+    CxColor *cellHuntRangeBackgroundColor(void);
+
     // Color helper methods - apply foreground and background in one call
     void applyHeaderColors(CxScreen *screen);
     void applySelectedCellColors(CxScreen *screen);
     void applyCellColors(CxScreen *screen);
     void applyCommandLineColors(CxScreen *screen);
+    void applyCellHuntColors(CxScreen *screen);
+    void applyCellHuntRangeColors(CxScreen *screen);
     void resetColors(CxScreen *screen);
 
     void writeDefaults(CxString fname);
@@ -114,6 +122,12 @@ private:
 
     // Row number color
     CxColor *_rowNumberTextColor;
+
+    // Cell hunt colors
+    CxColor *_cellHuntTextColor;
+    CxColor *_cellHuntBackgroundColor;
+    CxColor *_cellHuntRangeTextColor;
+    CxColor *_cellHuntRangeBackgroundColor;
 
     CxJSONBase *_baseNode;
 };

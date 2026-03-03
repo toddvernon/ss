@@ -28,6 +28,20 @@ class SpreadsheetDefaults;  // forward declaration
 
 //-------------------------------------------------------------------------------------------------
 //
+// HighlightType - enumeration for different cell highlight states
+//
+//-------------------------------------------------------------------------------------------------
+
+enum HighlightType {
+    HIGHLIGHT_NONE = 0,         // no highlight (normal cell)
+    HIGHLIGHT_CURSOR = 1,       // current cursor position (blue)
+    HIGHLIGHT_HUNT = 2,         // cell hunt cursor (green)
+    HIGHLIGHT_HUNT_RANGE = 3    // cell hunt range fill (light green)
+};
+
+
+//-------------------------------------------------------------------------------------------------
+//
 // SheetView
 //
 // Displays the spreadsheet grid. Cells are rendered as rectangular regions without borders.
@@ -63,6 +77,19 @@ class SheetView {
     int getDefaultColumnWidth(void);
     void setDefaultColumnWidth(int width);
 
+    // Cell hunt mode support
+    void setCellHuntMode(int active, CxSheetCellCoordinate formulaCell,
+                         CxSheetCellCoordinate huntCell);
+    // enable/disable cell hunt mode with formula and hunt cell positions
+
+    void setHuntRange(int active, CxSheetCellCoordinate anchor,
+                      CxSheetCellCoordinate current);
+    // set range selection (after SPACE pressed)
+
+    void updateCellHuntMove(CxSheetCellCoordinate oldPos,
+                            CxSheetCellCoordinate newPos);
+    // optimized redraw for cell hunt cursor movement
+
   private:
 
     CxScreen *screen;
@@ -80,17 +107,31 @@ class SheetView {
     int _scrollRowOffset;   // first visible data row (0-based)
     int _scrollColOffset;   // first visible data column (0-based)
 
+    // Cell hunt mode state
+    int _inCellHuntMode;                    // 1 if cell hunt mode is active
+    int _huntRangeActive;                   // 1 if selecting a range (after SPACE)
+    CxSheetCellCoordinate _huntFormulaCell; // cell where formula entry started
+    CxSheetCellCoordinate _huntAnchorCell;  // range start (after SPACE pressed)
+    CxSheetCellCoordinate _huntCurrentCell; // current selection / range end
+
     // internal helpers
     void drawColumnHeaders(void);
     void drawRowNumbers(void);
     void drawCells(void);
-    void drawCell(int screenRow, int screenCol, int dataRow, int dataCol, int isHighlighted);
+    void drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
+                  HighlightType highlightType);
 
     int visibleDataRows(void);
     int visibleDataCols(void);
 
     void ensureCursorVisible(void);
     // adjust scroll offsets if cursor is off-screen
+
+    HighlightType getHighlightTypeForCell(int dataRow, int dataCol);
+    // determine appropriate highlight type for a cell
+
+    int isCellInHuntRange(int row, int col);
+    // check if cell is within the hunt range (anchor to current)
 
     CxString formatCellValue(CxSheetCell *cell, int width);
     // format cell contents for display

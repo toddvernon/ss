@@ -42,6 +42,9 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _currentCommand(NULL)
 , _quitRequested(0)
 , _dataEntryMode(ENTRY_NONE)
+, _inCellHuntMode(0)
+, _cellHuntRangeActive(0)
+, _cellHuntInsertPos(0)
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -180,6 +183,15 @@ SheetEditor::run(void)
     while (1) {
         // Get next keyboard action (blocking)
         CxKeyAction keyAction = keyboard->getAction();
+
+        // Cell hunt mode takes priority when active
+        if (_inCellHuntMode) {
+            focusCellHunt(keyAction);
+            if (_quitRequested) {
+                return;
+            }
+            continue;
+        }
 
         // Dispatch based on current program mode
         switch (programMode) {
@@ -1046,6 +1058,13 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
         return;
     }
 
+    // Shift+Arrow in formula mode enters cell hunt mode
+    if (action == CxKeyAction::SHIFT_CURSOR && _dataEntryMode == ENTRY_FORMULA) {
+        CxString tag = keyAction.tag();
+        enterCellHuntMode(tag);
+        return;
+    }
+
     // Arrow keys move cursor within buffer
     if (action == CxKeyAction::CURSOR) {
         CxString tag = keyAction.tag();
@@ -1232,4 +1251,217 @@ SheetEditor::updateDataEntryDisplay(void)
     commandLineView->updateScreen();
     commandLineView->placeCursorAt(prefixLen + _dataEntryCursorPos);
     fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::enterCellHuntMode
+//
+// Enter cell hunt mode for selecting a cell reference in a formula. The direction parameter
+// indicates which shift+arrow key was pressed to enter the mode, and we move the hunt cursor
+// one cell in that direction from the formula cell.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::enterCellHuntMode(CxString direction)
+{
+    _inCellHuntMode = 1;
+    _cellHuntRangeActive = 0;
+
+    // Save formula cell position (the cell being edited)
+    _cellHuntFormulaPos = sheetModel->getCurrentPosition();
+
+    // Start hunt at the formula cell, then move one step in the direction pressed
+    _cellHuntCurrentPos = _cellHuntFormulaPos;
+    _cellHuntAnchorPos = _cellHuntFormulaPos;
+
+    // Save current cursor position for inserting reference later
+    _cellHuntInsertPos = _dataEntryCursorPos;
+
+    // Move one cell in the direction of the shift+arrow
+    if (direction == "<shift-arrow-up>") {
+        if (_cellHuntCurrentPos.getRow() > 0) {
+            _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() - 1);
+        }
+    } else if (direction == "<shift-arrow-down>") {
+        _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() + 1);
+    } else if (direction == "<shift-arrow-left>") {
+        if (_cellHuntCurrentPos.getCol() > 0) {
+            _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() - 1);
+        }
+    } else if (direction == "<shift-arrow-right>") {
+        _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() + 1);
+    }
+
+    // Update SheetView with hunt mode state
+    sheetView->setCellHuntMode(1, _cellHuntFormulaPos, _cellHuntCurrentPos);
+    sheetView->updateScreen();
+
+    // Update command line to show formula with live reference
+    updateCellHuntDisplay();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::exitCellHuntMode
+//
+// Exit cell hunt mode. If insertRef is true, insert the selected reference into the formula.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::exitCellHuntMode(int insertRef)
+{
+    _inCellHuntMode = 0;
+
+    // Turn off hunt mode in SheetView
+    sheetView->setCellHuntMode(0, _cellHuntFormulaPos, _cellHuntCurrentPos);
+
+    if (insertRef) {
+        // Build the reference string and insert it at the saved cursor position
+        CxString ref = buildCellHuntReference();
+
+        // Insert reference at the saved position in the data entry buffer
+        for (int i = 0; i < (int)ref.length(); i++) {
+            char c = ref.data()[i];
+            _dataEntryBuffer.insert(_cellHuntInsertPos + i, CxUTFCharacter::fromASCII(c));
+        }
+        _dataEntryCursorPos = _cellHuntInsertPos + ref.length();
+    }
+
+    // Reset hunt state
+    _cellHuntRangeActive = 0;
+
+    // Redraw the sheet and update the data entry display
+    sheetView->updateScreen();
+    updateDataEntryDisplay();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::focusCellHunt
+//
+// Handle keyboard input while in cell hunt mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::focusCellHunt(CxKeyAction keyAction)
+{
+    int action = keyAction.actionType();
+
+    // ENTER - insert reference and return to formula editing
+    if (action == CxKeyAction::NEWLINE) {
+        exitCellHuntMode(1);  // insert reference
+        return;
+    }
+
+    // ESC - cancel without inserting
+    if (action == CxKeyAction::COMMAND) {
+        exitCellHuntMode(0);  // don't insert
+        return;
+    }
+
+    // SPACE - anchor range start (toggle range mode)
+    if (action == CxKeyAction::SYMBOL && keyAction.tag() == " ") {
+        if (!_cellHuntRangeActive) {
+            // Start range selection
+            _cellHuntRangeActive = 1;
+            _cellHuntAnchorPos = _cellHuntCurrentPos;
+            sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
+        } else {
+            // SPACE again could toggle off, but for now we keep it simple
+            // and just ignore
+        }
+        sheetView->updateScreen();
+        updateCellHuntDisplay();
+        return;
+    }
+
+    // Arrow keys - move hunt cursor (shift+arrow also accepted)
+    if (action == CxKeyAction::CURSOR || action == CxKeyAction::SHIFT_CURSOR) {
+        CxString tag = keyAction.tag();
+        CxSheetCellCoordinate oldPos = _cellHuntCurrentPos;
+
+        // Handle both regular arrow and shift+arrow tags
+        if (tag == "<arrow-up>" || tag == "<shift-arrow-up>") {
+            if (_cellHuntCurrentPos.getRow() > 0) {
+                _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() - 1);
+            }
+        } else if (tag == "<arrow-down>" || tag == "<shift-arrow-down>") {
+            _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() + 1);
+        } else if (tag == "<arrow-left>" || tag == "<shift-arrow-left>") {
+            if (_cellHuntCurrentPos.getCol() > 0) {
+                _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() - 1);
+            }
+        } else if (tag == "<arrow-right>" || tag == "<shift-arrow-right>") {
+            _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() + 1);
+        }
+
+        // Update SheetView
+        if (_cellHuntRangeActive) {
+            sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
+        }
+        sheetView->updateCellHuntMove(oldPos, _cellHuntCurrentPos);
+
+        // Update command line with live reference
+        updateCellHuntDisplay();
+        return;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::updateCellHuntDisplay
+//
+// Update the command line to show the formula with the current cell reference preview.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::updateCellHuntDisplay(void)
+{
+    // Build the formula string with the reference at the insert position
+    CxString bufferBytes = _dataEntryBuffer.toBytes();
+    CxString ref = buildCellHuntReference();
+
+    // Create display: formula prefix + buffer up to insert pos + reference + rest of buffer
+    CxString beforeInsert = bufferBytes.subString(0, _cellHuntInsertPos);
+    CxString afterInsert = "";
+    if (_cellHuntInsertPos < (int)bufferBytes.length()) {
+        afterInsert = bufferBytes.subString(_cellHuntInsertPos,
+                                            bufferBytes.length() - _cellHuntInsertPos);
+    }
+
+    CxString display = CxString("formula: ") + beforeInsert + ref + afterInsert;
+
+    commandLineView->setText(display);
+    commandLineView->updateScreen();
+
+    // Place cursor after the reference preview
+    commandLineView->placeCursorAt(9 + _cellHuntInsertPos + ref.length());
+    fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::buildCellHuntReference
+//
+// Build the cell reference string. Returns absolute format like $A$1 for single cell,
+// or $A$1:$C$3 for a range.
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetEditor::buildCellHuntReference(void)
+{
+    // Make copies and set absolute flags for cell hunt references
+    CxSheetCellCoordinate currentCopy = _cellHuntCurrentPos;
+    currentCopy.setRowAbsolute(1);
+    currentCopy.setColAbsolute(1);
+
+    if (_cellHuntRangeActive) {
+        // Range reference
+        CxSheetCellCoordinate anchorCopy = _cellHuntAnchorPos;
+        anchorCopy.setRowAbsolute(1);
+        anchorCopy.setColAbsolute(1);
+
+        CxString anchorAddr = anchorCopy.toAbsoluteAddress();
+        CxString currentAddr = currentCopy.toAbsoluteAddress();
+        return anchorAddr + ":" + currentAddr;
+    } else {
+        // Single cell reference
+        return currentCopy.toAbsoluteAddress();
+    }
 }

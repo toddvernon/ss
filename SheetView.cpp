@@ -36,6 +36,8 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
 , _defaultColWidth(10)
 , _scrollRowOffset(0)
 , _scrollColOffset(0)
+, _inCellHuntMode(0)
+, _huntRangeActive(0)
 {
 }
 
@@ -110,8 +112,6 @@ SheetView::updateScreen(void)
 void
 SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 {
-    CxSheetCellCoordinate cursorPos = sheetModel->getCurrentPosition();
-
     int visRows = visibleDataRows();
     int visCols = visibleDataCols();
 
@@ -132,10 +132,8 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
         int screenRow = _startRow + _colHeaderHeight + (dataRow - _scrollRowOffset);
         int screenCol = _rowHeaderWidth + ((dataCol - _scrollColOffset) * _defaultColWidth);
 
-        int isHighlighted = (dataRow == (int)cursorPos.getRow() &&
-                             dataCol == (int)cursorPos.getCol());
-
-        drawCell(screenRow, screenCol, dataRow, dataCol, isHighlighted);
+        HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCol);
+        drawCell(screenRow, screenCol, dataRow, dataCol, highlightType);
     }
 
     fflush(stdout);
@@ -265,8 +263,6 @@ SheetView::drawCells(void)
     int numRows = visibleDataRows();
     int numCols = visibleDataCols();
 
-    CxSheetCellCoordinate cursorPos = sheetModel->getCurrentPosition();
-
     for (int r = 0; r < numRows; r++) {
         int screenRow = _startRow + _colHeaderHeight + r;
         int dataRow = r + _scrollRowOffset;
@@ -275,10 +271,8 @@ SheetView::drawCells(void)
             int screenCol = _rowHeaderWidth + (c * _defaultColWidth);
             int dataCol = c + _scrollColOffset;
 
-            int isHighlighted = (dataRow == (int)cursorPos.getRow() &&
-                                 dataCol == (int)cursorPos.getCol());
-
-            drawCell(screenRow, screenCol, dataRow, dataCol, isHighlighted);
+            HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCol);
+            drawCell(screenRow, screenCol, dataRow, dataCol, highlightType);
         }
     }
 }
@@ -287,10 +281,11 @@ SheetView::drawCells(void)
 //-------------------------------------------------------------------------------------------------
 // SheetView::drawCell
 //
-// Draw a single cell.
+// Draw a single cell with the specified highlight type.
 //-------------------------------------------------------------------------------------------------
 void
-SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol, int isHighlighted)
+SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
+                    HighlightType highlightType)
 {
     CxScreen::placeCursor(screenRow, screenCol);
 
@@ -301,17 +296,32 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol, int 
     // Format cell content
     CxString content = formatCellValue(cell, _defaultColWidth);
 
-    // Draw with highlight if current cell
-    if (isHighlighted) {
-        // Apply selected cell colors
-        _defaults->applySelectedCellColors(screen);
-        printf("%s", content.data());
-        _defaults->resetColors(screen);
-    } else {
-        // Apply normal cell colors
-        _defaults->applyCellColors(screen);
-        printf("%s", content.data());
-        _defaults->resetColors(screen);
+    // Draw with appropriate colors based on highlight type
+    switch (highlightType) {
+        case HIGHLIGHT_CURSOR:
+            _defaults->applySelectedCellColors(screen);
+            printf("%s", content.data());
+            _defaults->resetColors(screen);
+            break;
+
+        case HIGHLIGHT_HUNT:
+            _defaults->applyCellHuntColors(screen);
+            printf("%s", content.data());
+            _defaults->resetColors(screen);
+            break;
+
+        case HIGHLIGHT_HUNT_RANGE:
+            _defaults->applyCellHuntRangeColors(screen);
+            printf("%s", content.data());
+            _defaults->resetColors(screen);
+            break;
+
+        case HIGHLIGHT_NONE:
+        default:
+            _defaults->applyCellColors(screen);
+            printf("%s", content.data());
+            _defaults->resetColors(screen);
+            break;
     }
 }
 
@@ -511,4 +521,137 @@ SheetView::setDefaultColumnWidth(int width)
     if (width >= 3 && width <= 50) {
         _defaultColWidth = width;
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::setCellHuntMode
+//
+// Enable or disable cell hunt mode. When active, the formula cell is highlighted blue
+// and the hunt cell is highlighted green.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setCellHuntMode(int active, CxSheetCellCoordinate formulaCell,
+                           CxSheetCellCoordinate huntCell)
+{
+    _inCellHuntMode = active;
+    _huntFormulaCell = formulaCell;
+    _huntCurrentCell = huntCell;
+
+    if (!active) {
+        _huntRangeActive = 0;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::setHuntRange
+//
+// Set range selection state. When active is true, anchor marks the start of the range
+// and current marks the end. Cells between are highlighted with range color.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setHuntRange(int active, CxSheetCellCoordinate anchor,
+                        CxSheetCellCoordinate current)
+{
+    _huntRangeActive = active;
+    _huntAnchorCell = anchor;
+    _huntCurrentCell = current;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::updateCellHuntMove
+//
+// Optimized redraw for cell hunt cursor movement. Redraws old and new positions.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateCellHuntMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos)
+{
+    // Update the hunt current position
+    _huntCurrentCell = newPos;
+
+    // Collect cells to redraw
+    CxSList<CxSheetCellCoordinate> cells;
+    cells.append(oldPos);
+
+    if (!(oldPos == newPos)) {
+        cells.append(newPos);
+    }
+
+    // If range is active, we may need a full redraw for range highlighting
+    if (_huntRangeActive) {
+        // Full redraw to properly show range
+        updateScreen();
+    } else {
+        updateCells(cells);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getHighlightTypeForCell
+//
+// Determine the appropriate highlight type for a cell based on current mode and position.
+//-------------------------------------------------------------------------------------------------
+HighlightType
+SheetView::getHighlightTypeForCell(int dataRow, int dataCol)
+{
+    CxSheetCellCoordinate cursorPos = sheetModel->getCurrentPosition();
+
+    // If in cell hunt mode, check hunt positions first
+    if (_inCellHuntMode) {
+        // Check if this is the hunt cursor position
+        if (dataRow == (int)_huntCurrentCell.getRow() &&
+            dataCol == (int)_huntCurrentCell.getCol()) {
+            return HIGHLIGHT_HUNT;
+        }
+
+        // Check if this is within the hunt range (when range is active)
+        if (_huntRangeActive && isCellInHuntRange(dataRow, dataCol)) {
+            return HIGHLIGHT_HUNT_RANGE;
+        }
+
+        // Check if this is the formula cell (where we started)
+        if (dataRow == (int)_huntFormulaCell.getRow() &&
+            dataCol == (int)_huntFormulaCell.getCol()) {
+            return HIGHLIGHT_CURSOR;
+        }
+    } else {
+        // Normal mode - check if this is the cursor position
+        if (dataRow == (int)cursorPos.getRow() &&
+            dataCol == (int)cursorPos.getCol()) {
+            return HIGHLIGHT_CURSOR;
+        }
+    }
+
+    return HIGHLIGHT_NONE;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::isCellInHuntRange
+//
+// Check if a cell is within the hunt range (from anchor to current, inclusive).
+// The range is normalized so it works regardless of selection direction.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::isCellInHuntRange(int row, int col)
+{
+    if (!_huntRangeActive) {
+        return 0;
+    }
+
+    int anchorRow = _huntAnchorCell.getRow();
+    int anchorCol = _huntAnchorCell.getCol();
+    int currentRow = _huntCurrentCell.getRow();
+    int currentCol = _huntCurrentCell.getCol();
+
+    // Normalize the range (min/max for each dimension)
+    int minRow = (anchorRow < currentRow) ? anchorRow : currentRow;
+    int maxRow = (anchorRow > currentRow) ? anchorRow : currentRow;
+    int minCol = (anchorCol < currentCol) ? anchorCol : currentCol;
+    int maxCol = (anchorCol > currentCol) ? anchorCol : currentCol;
+
+    return (row >= minRow && row <= maxRow && col >= minCol && col <= maxCol);
 }

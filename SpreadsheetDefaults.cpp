@@ -47,6 +47,12 @@ SpreadsheetDefaults::SpreadsheetDefaults(void)
 
     // Row number color
     _rowNumberTextColor = new CxAnsiForegroundColor(CxAnsiForegroundColor::NONE);
+
+    // Cell hunt colors - default to green for hunt cursor, light green for range
+    _cellHuntTextColor       = new CxRGBForegroundColor(255, 255, 255);   // white text
+    _cellHuntBackgroundColor = new CxRGBBackgroundColor(60, 150, 60);     // green background
+    _cellHuntRangeTextColor       = new CxRGBForegroundColor(40, 40, 40); // dark text
+    _cellHuntRangeBackgroundColor = new CxRGBBackgroundColor(180, 220, 180); // light green
 }
 
 
@@ -354,6 +360,26 @@ CxColor *SpreadsheetDefaults::rowNumberTextColor(void)
     return _rowNumberTextColor;
 }
 
+CxColor *SpreadsheetDefaults::cellHuntTextColor(void)
+{
+    return _cellHuntTextColor;
+}
+
+CxColor *SpreadsheetDefaults::cellHuntBackgroundColor(void)
+{
+    return _cellHuntBackgroundColor;
+}
+
+CxColor *SpreadsheetDefaults::cellHuntRangeTextColor(void)
+{
+    return _cellHuntRangeTextColor;
+}
+
+CxColor *SpreadsheetDefaults::cellHuntRangeBackgroundColor(void)
+{
+    return _cellHuntRangeBackgroundColor;
+}
+
 
 //-------------------------------------------------------------------------------------------------
 // Color helper methods
@@ -381,6 +407,18 @@ void SpreadsheetDefaults::applyCommandLineColors(CxScreen *screen)
 {
     screen->setForegroundColor(_commandLineTextColor);
     screen->setBackgroundColor(_commandLineBackgroundColor);
+}
+
+void SpreadsheetDefaults::applyCellHuntColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_cellHuntTextColor);
+    screen->setBackgroundColor(_cellHuntBackgroundColor);
+}
+
+void SpreadsheetDefaults::applyCellHuntRangeColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_cellHuntRangeTextColor);
+    screen->setBackgroundColor(_cellHuntRangeBackgroundColor);
 }
 
 void SpreadsheetDefaults::resetColors(CxScreen *screen)

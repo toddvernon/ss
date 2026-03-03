@@ -101,6 +101,13 @@ class SheetEditor {
     void cancelDataEntry(void);
     void updateDataEntryDisplay(void);
 
+    // cell hunt methods (for formula cell reference selection)
+    void enterCellHuntMode(CxString direction);
+    void exitCellHuntMode(int insertRef);
+    void focusCellHunt(CxKeyAction keyAction);
+    void updateCellHuntDisplay(void);
+    CxString buildCellHuntReference(void);
+
     // command handlers
     void CMD_Quit(CxString commandLine);
     void CMD_Load(CxString commandLine);
@@ -135,6 +142,14 @@ class SheetEditor {
     DataEntryMode _dataEntryMode;
     CxUTFString _dataEntryBuffer;   // current input being entered (UTF-8 aware)
     int _dataEntryCursorPos;        // cursor position within buffer (0 = start)
+
+    // cell hunt state (for formula cell reference selection)
+    int _inCellHuntMode;                      // 1 if in cell hunt mode
+    int _cellHuntRangeActive;                 // 1 after SPACE pressed (selecting range)
+    CxSheetCellCoordinate _cellHuntFormulaPos; // cell where formula entry started
+    CxSheetCellCoordinate _cellHuntAnchorPos;  // range start (after SPACE)
+    CxSheetCellCoordinate _cellHuntCurrentPos; // current hunt cursor position
+    int _cellHuntInsertPos;                   // cursor position in formula to insert ref
 
     // helper methods
     void enterCommandLineMode(void);
