@@ -90,14 +90,8 @@ SheetView::updateScreen(void)
     drawRowNumbers();
     drawCells();
 
-    // Draw divider line at bottom of sheet area (last row of our region)
-    // Using UTF-8 box drawing horizontal line character (─)
-    CxScreen::placeCursor(_endRow, 0);
-    screen->setForegroundColor(_defaults->dividerColor());
-    for (int i = 0; i < screen->cols(); i++) {
-        printf("\xe2\x94\x80");  // ─ (BOX DRAWINGS LIGHT HORIZONTAL)
-    }
-    screen->resetForegroundColor();
+    // Draw status/divider line at bottom of sheet area
+    updateStatusLine();
 
     fflush(stdout);
 }
@@ -799,4 +793,90 @@ SheetView::isCellInHuntRange(int row, int col)
     int maxCol = (anchorCol > currentCol) ? anchorCol : currentCol;
 
     return (row >= minRow && row <= maxRow && col >= minCol && col <= maxCol);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::setFilePath
+//
+// Set the file path for status line display.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setFilePath(CxString path)
+{
+    _filePath = path;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::updateStatusLine
+//
+// Draw the status/divider line at the bottom of the sheet area.
+// Shows: ── ss: Editing [ <filename> ] ──────────────────── cell(<address>) ──
+// Similar to cm's status line format.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateStatusLine(void)
+{
+    // Status fill character - UTF-8 box drawing horizontal line
+    static const char *STATUS_FILL = "\xe2\x94\x80";  // ─ (U+2500)
+
+    CxScreen::placeCursor(_endRow, 0);
+    screen->setForegroundColor(_defaults->headerTextColor());
+    screen->setBackgroundColor(_defaults->headerBackgroundColor());
+
+    // Build left part: ── ss: Editing [ <filename> ]
+    CxString leftPart;
+    leftPart += STATUS_FILL;
+    leftPart += STATUS_FILL;
+    leftPart += " ss: Editing [ ";
+
+    if (_filePath.length() > 0) {
+        leftPart += _filePath;
+    } else {
+        leftPart += "(untitled)";
+    }
+    leftPart += " ] ";
+
+    // Calculate display width for left part (2 fill chars + text)
+    int leftDisplayWidth = 2;  // two fill chars
+    leftDisplayWidth += 15;    // " ss: Editing [ "
+    if (_filePath.length() > 0) {
+        leftDisplayWidth += _filePath.length();
+    } else {
+        leftDisplayWidth += 10;  // "(untitled)"
+    }
+    leftDisplayWidth += 3;     // " ] "
+
+    // Build right part: cell(<address>)
+    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+    CxString cellAddress = pos.toAddress();
+
+    CxString rightPart;
+    rightPart += "cell(";
+    rightPart += cellAddress;
+    rightPart += ") ";
+    rightPart += STATUS_FILL;
+    rightPart += STATUS_FILL;
+
+    // Right part display width: "cell(" + address + ") " + 2 fill chars
+    int rightDisplayWidth = 5 + cellAddress.length() + 2 + 2;
+
+    // Calculate fill characters needed between left and right
+    int totalWidth = screen->cols();
+    int fillNeeded = totalWidth - leftDisplayWidth - rightDisplayWidth;
+    if (fillNeeded < 0) fillNeeded = 0;
+
+    // Build and output the full status line
+    CxString statusLine = leftPart;
+    for (int i = 0; i < fillNeeded; i++) {
+        statusLine += STATUS_FILL;
+    }
+    statusLine += rightPart;
+
+    // Write the status line
+    printf("%s", statusLine.data());
+
+    screen->resetColors();
+    fflush(stdout);
 }

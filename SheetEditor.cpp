@@ -45,6 +45,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _inCellHuntMode(0)
 , _cellHuntRangeActive(0)
 , _cellHuntInsertPos(0)
+, _dataEntryCursorPos(0)
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -127,6 +128,9 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     //---------------------------------------------------------------------------------------------
     // Initial screen draw
     //---------------------------------------------------------------------------------------------
+    // Set file path for status line display
+    sheetView->setFilePath(_filePath);
+
     sheetView->updateScreen();
     resetPrompt();
 
@@ -261,6 +265,7 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
             // Get new position and update display (handles scrolling if needed)
             CxSheetCellCoordinate newPos = sheetModel->getCurrentPosition();
             sheetView->updateCursorMove(oldPos, newPos);
+            sheetView->updateStatusLine();
             resetPrompt();
         }
         break;
@@ -809,6 +814,7 @@ SheetEditor::initCommandCompleters(void)
 // Reset the command line to show cell position and content.
 // For formulas, shows the formula text (with = prefix).
 // For other types, shows the display value.
+// Also clears any message on the message line (like "Loaded: ..." messages).
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::resetPrompt(void)
@@ -825,6 +831,12 @@ SheetEditor::resetPrompt(void)
 
     commandLineView->setText(display);
     commandLineView->updateScreen();
+
+    // Clear message line if it has content (messages disappear on first action)
+    if (messageLineView->getText().length() > 0) {
+        messageLineView->setText("");
+        messageLineView->updateScreen();
+    }
 }
 
 
@@ -916,6 +928,7 @@ SheetEditor::CMD_Load(CxString commandLine)
     // Try to load the file
     if (sheetModel->loadSheet(filepath)) {
         _filePath = filepath;
+        sheetView->setFilePath(_filePath);
         setMessage(CxString("Loaded: ") + filepath);
         sheetView->updateScreen();
     } else {
@@ -948,6 +961,8 @@ SheetEditor::CMD_Save(CxString commandLine)
     // Try to save the file
     if (sheetModel->saveSheet(filepath)) {
         _filePath = filepath;
+        sheetView->setFilePath(_filePath);
+        sheetView->updateStatusLine();
         setMessage(CxString("Saved: ") + filepath);
     } else {
         setMessage(CxString("Failed to save: ") + filepath);
@@ -1103,6 +1118,7 @@ SheetEditor::enterDataEntryMode(DataEntryMode mode, char firstChar)
     _dataEntryMode = mode;
     _dataEntryBuffer.clear();
     _dataEntryBuffer.append(CxUTFCharacter::fromASCII(firstChar));
+    _dataEntryCursorPos = 1;  // cursor after the first character
 
     updateDataEntryDisplay();
 }

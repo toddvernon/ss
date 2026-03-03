@@ -90,11 +90,19 @@ class SheetView {
                             CxSheetCellCoordinate newPos);
     // optimized redraw for cell hunt cursor movement
 
+    void setFilePath(CxString path);
+    // set the file path for status line display
+
+    void updateStatusLine(void);
+    // update the status/divider line (shows filename and cell position)
+
   private:
 
     CxScreen *screen;
     CxSheetModel *sheetModel;
     SpreadsheetDefaults *_defaults;
+
+    CxString _filePath;     // current file path for status line display
 
     int _startRow;          // first screen row for sheet area
     int _endRow;            // last screen row for sheet area

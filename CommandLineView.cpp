@@ -64,8 +64,8 @@ CommandLineView::updateScreen(void)
 {
     CxScreen::placeCursor(_screenRow, 0);
 
-    // Apply command line colors
-    _defaults->applyCommandLineColors(_screen);
+    // Use default terminal colors (no color)
+    _screen->resetColors();
 
     // Clear the line
     CxScreen::clearScreenFromCursorToEndOfLine();
