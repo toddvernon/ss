@@ -53,6 +53,10 @@ SpreadsheetDefaults::SpreadsheetDefaults(void)
     _cellHuntBackgroundColor = new CxRGBBackgroundColor(60, 150, 60);     // green background
     _cellHuntRangeTextColor       = new CxRGBForegroundColor(40, 40, 40); // dark text
     _cellHuntRangeBackgroundColor = new CxRGBBackgroundColor(180, 220, 180); // light green
+
+    // Range selection colors - light blue fill to distinguish from cursor highlight
+    _rangeSelectTextColor       = new CxRGBForegroundColor(40, 40, 60);   // dark text
+    _rangeSelectBackgroundColor = new CxRGBBackgroundColor(180, 200, 230); // light blue
 }
 
 
@@ -380,6 +384,16 @@ CxColor *SpreadsheetDefaults::cellHuntRangeBackgroundColor(void)
     return _cellHuntRangeBackgroundColor;
 }
 
+CxColor *SpreadsheetDefaults::rangeSelectTextColor(void)
+{
+    return _rangeSelectTextColor;
+}
+
+CxColor *SpreadsheetDefaults::rangeSelectBackgroundColor(void)
+{
+    return _rangeSelectBackgroundColor;
+}
+
 
 //-------------------------------------------------------------------------------------------------
 // Color helper methods
@@ -419,6 +433,12 @@ void SpreadsheetDefaults::applyCellHuntRangeColors(CxScreen *screen)
 {
     screen->setForegroundColor(_cellHuntRangeTextColor);
     screen->setBackgroundColor(_cellHuntRangeBackgroundColor);
+}
+
+void SpreadsheetDefaults::applyRangeSelectColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_rangeSelectTextColor);
+    screen->setBackgroundColor(_rangeSelectBackgroundColor);
 }
 
 void SpreadsheetDefaults::resetColors(CxScreen *screen)

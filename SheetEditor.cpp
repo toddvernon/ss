@@ -46,6 +46,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _cellHuntRangeActive(0)
 , _cellHuntInsertPos(0)
 , _dataEntryCursorPos(0)
+, _rangeSelectActive(0)
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -236,18 +237,36 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
 
     switch (action) {
         //-------------------------------------------------------------------------------------
-        // ESC key enters command mode
+        // ESC key - cancel selection if active, otherwise enter command mode
         //-------------------------------------------------------------------------------------
         case CxKeyAction::COMMAND:
-            enterCommandLineMode();
-            break;
+        {
+            if (_rangeSelectActive) {
+                // Cancel range selection
+                _rangeSelectActive = 0;
+                sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+                sheetView->updateScreen();
+                sheetView->updateStatusLine();
+                resetPrompt();
+            } else {
+                // Enter command mode
+                enterCommandLineMode();
+            }
+        }
+        break;
 
         //-------------------------------------------------------------------------------------
-        // Arrow key navigation
+        // Arrow key navigation (cancels selection if active)
         //-------------------------------------------------------------------------------------
         case CxKeyAction::CURSOR:
         {
             CxString tag = keyAction.tag();
+
+            // Cancel range selection if active (plain arrow cancels selection)
+            if (_rangeSelectActive) {
+                _rangeSelectActive = 0;
+                sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+            }
 
             // Save old position before moving
             CxSheetCellCoordinate oldPos = sheetModel->getCurrentPosition();
@@ -265,6 +284,51 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
             // Get new position and update display (handles scrolling if needed)
             CxSheetCellCoordinate newPos = sheetModel->getCurrentPosition();
             sheetView->updateCursorMove(oldPos, newPos);
+            sheetView->updateStatusLine();
+            resetPrompt();
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Shift+Arrow key starts/extends range selection
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::SHIFT_CURSOR:
+        {
+            CxString tag = keyAction.tag();
+
+            // If not already selecting, start a new selection with current cell as anchor
+            if (!_rangeSelectActive) {
+                _rangeSelectActive = 1;
+                _rangeAnchor = sheetModel->getCurrentPosition();
+                _rangeCurrent = _rangeAnchor;
+            }
+
+            // Save old position before moving
+            CxSheetCellCoordinate oldCurrent = _rangeCurrent;
+
+            // Move cursor in the direction indicated
+            if (tag == "<shift-arrow-up>") {
+                sheetModel->cursorUpRequest();
+            } else if (tag == "<shift-arrow-down>") {
+                sheetModel->cursorDownRequest();
+            } else if (tag == "<shift-arrow-left>") {
+                sheetModel->cursorLeftRequest();
+            } else if (tag == "<shift-arrow-right>") {
+                sheetModel->cursorRightRequest();
+            }
+
+            // Update the selection current position
+            _rangeCurrent = sheetModel->getCurrentPosition();
+
+            // Check if we moved to a position that requires scrolling
+            // If so, need full redraw; otherwise use optimized partial redraw
+            if (oldCurrent == _rangeCurrent) {
+                // No movement, nothing to update
+            } else {
+                // Use optimized update that only redraws changed cells
+                // (handles scrolling internally via updateCells visibility check)
+                sheetView->updateRangeSelectionMove(_rangeAnchor, oldCurrent, _rangeCurrent);
+            }
             sheetView->updateStatusLine();
             resetPrompt();
         }

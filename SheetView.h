@@ -36,7 +36,8 @@ enum HighlightType {
     HIGHLIGHT_NONE = 0,         // no highlight (normal cell)
     HIGHLIGHT_CURSOR = 1,       // current cursor position (blue)
     HIGHLIGHT_HUNT = 2,         // cell hunt cursor (green)
-    HIGHLIGHT_HUNT_RANGE = 3    // cell hunt range fill (light green)
+    HIGHLIGHT_HUNT_RANGE = 3,   // cell hunt range fill (light green)
+    HIGHLIGHT_RANGE = 4         // EDIT mode range selection (light blue)
 };
 
 
@@ -90,6 +91,16 @@ class SheetView {
                             CxSheetCellCoordinate newPos);
     // optimized redraw for cell hunt cursor movement
 
+    // Range selection support (EDIT mode multi-cell selection)
+    void setRangeSelection(int active, CxSheetCellCoordinate anchor,
+                           CxSheetCellCoordinate current);
+    // enable/disable range selection with anchor and current positions
+
+    void updateRangeSelectionMove(CxSheetCellCoordinate anchor,
+                                  CxSheetCellCoordinate oldCurrent,
+                                  CxSheetCellCoordinate newCurrent);
+    // optimized redraw for range selection extension - only redraws changed cells
+
     void setFilePath(CxString path);
     // set the file path for status line display
 
@@ -122,6 +133,11 @@ class SheetView {
     CxSheetCellCoordinate _huntAnchorCell;  // range start (after SPACE pressed)
     CxSheetCellCoordinate _huntCurrentCell; // current selection / range end
 
+    // Range selection state (EDIT mode multi-cell selection)
+    int _rangeSelectActive;                 // 1 if range selection is active
+    CxSheetCellCoordinate _rangeAnchor;     // where selection started
+    CxSheetCellCoordinate _rangeCurrent;    // current end of selection
+
     // internal helpers
     void drawColumnHeaders(void);
     void drawRowNumbers(void);
@@ -140,6 +156,9 @@ class SheetView {
 
     int isCellInHuntRange(int row, int col);
     // check if cell is within the hunt range (anchor to current)
+
+    int isCellInSelectionRange(int row, int col);
+    // check if cell is within the selection range (EDIT mode)
 
     CxString formatCellValue(CxSheetCell *cell, int width);
     // format cell contents for display

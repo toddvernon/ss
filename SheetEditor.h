@@ -153,6 +153,11 @@ class SheetEditor {
     CxSheetCellCoordinate _cellHuntCurrentPos; // current hunt cursor position
     int _cellHuntInsertPos;                   // cursor position in formula to insert ref
 
+    // range selection state (for EDIT mode multi-cell selection)
+    int _rangeSelectActive;                   // 1 if range selection is active
+    CxSheetCellCoordinate _rangeAnchor;       // where selection started
+    CxSheetCellCoordinate _rangeCurrent;      // current end of selection
+
     // helper methods
     void enterCommandLineMode(void);
     void exitCommandLineMode(void);

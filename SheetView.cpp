@@ -38,6 +38,7 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
 , _scrollColOffset(0)
 , _inCellHuntMode(0)
 , _huntRangeActive(0)
+, _rangeSelectActive(0)
 {
 }
 
@@ -306,6 +307,12 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 
         case HIGHLIGHT_HUNT_RANGE:
             _defaults->applyCellHuntRangeColors(screen);
+            printf("%s", content.data());
+            _defaults->resetColors(screen);
+            break;
+
+        case HIGHLIGHT_RANGE:
+            _defaults->applyRangeSelectColors(screen);
             printf("%s", content.data());
             _defaults->resetColors(screen);
             break;
@@ -700,6 +707,106 @@ SheetView::setHuntRange(int active, CxSheetCellCoordinate anchor,
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::setRangeSelection
+//
+// Enable or disable range selection (EDIT mode multi-cell selection).
+// When active, anchor marks the start of the range and current marks the end.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setRangeSelection(int active, CxSheetCellCoordinate anchor,
+                             CxSheetCellCoordinate current)
+{
+    _rangeSelectActive = active;
+    _rangeAnchor = anchor;
+    _rangeCurrent = current;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::updateRangeSelectionMove
+//
+// Optimized redraw for range selection extension. Only redraws cells that changed
+// highlight state between the old selection and new selection.
+// If scrolling is needed, falls back to full redraw.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateRangeSelectionMove(CxSheetCellCoordinate anchor,
+                                    CxSheetCellCoordinate oldCurrent,
+                                    CxSheetCellCoordinate newCurrent)
+{
+    // Update range state - ensure selection is marked active
+    _rangeSelectActive = 1;
+    _rangeAnchor = anchor;
+    _rangeCurrent = newCurrent;
+
+    // Check if new position requires scrolling
+    int newRow = newCurrent.getRow();
+    int newCol = newCurrent.getCol();
+    int visRows = visibleDataRows();
+    int visCols = visibleDataCols();
+
+    int needsScroll = 0;
+    if (newRow < _scrollRowOffset || newRow >= _scrollRowOffset + visRows) {
+        needsScroll = 1;
+    }
+    if (newCol < _scrollColOffset || newCol >= _scrollColOffset + visCols) {
+        needsScroll = 1;
+    }
+
+    if (needsScroll) {
+        // Full redraw needed for scrolling
+        updateScreen();
+        return;
+    }
+
+    // Calculate old range bounds (normalized)
+    int oldMinRow = (anchor.getRow() < oldCurrent.getRow()) ? anchor.getRow() : oldCurrent.getRow();
+    int oldMaxRow = (anchor.getRow() > oldCurrent.getRow()) ? anchor.getRow() : oldCurrent.getRow();
+    int oldMinCol = (anchor.getCol() < oldCurrent.getCol()) ? anchor.getCol() : oldCurrent.getCol();
+    int oldMaxCol = (anchor.getCol() > oldCurrent.getCol()) ? anchor.getCol() : oldCurrent.getCol();
+
+    // Calculate new range bounds (normalized)
+    int newMinRow = (anchor.getRow() < newCurrent.getRow()) ? anchor.getRow() : newCurrent.getRow();
+    int newMaxRow = (anchor.getRow() > newCurrent.getRow()) ? anchor.getRow() : newCurrent.getRow();
+    int newMinCol = (anchor.getCol() < newCurrent.getCol()) ? anchor.getCol() : newCurrent.getCol();
+    int newMaxCol = (anchor.getCol() > newCurrent.getCol()) ? anchor.getCol() : newCurrent.getCol();
+
+    // Collect cells that changed highlight state
+    CxSList<CxSheetCellCoordinate> changedCells;
+
+    // Calculate union of old and new ranges to find all potentially changed cells
+    int unionMinRow = (oldMinRow < newMinRow) ? oldMinRow : newMinRow;
+    int unionMaxRow = (oldMaxRow > newMaxRow) ? oldMaxRow : newMaxRow;
+    int unionMinCol = (oldMinCol < newMinCol) ? oldMinCol : newMinCol;
+    int unionMaxCol = (oldMaxCol > newMaxCol) ? oldMaxCol : newMaxCol;
+
+    // Check each cell in the union - add to list if its state changed
+    for (int r = unionMinRow; r <= unionMaxRow; r++) {
+        for (int c = unionMinCol; c <= unionMaxCol; c++) {
+            int wasInOld = (r >= oldMinRow && r <= oldMaxRow &&
+                            c >= oldMinCol && c <= oldMaxCol);
+            int isInNew = (r >= newMinRow && r <= newMaxRow &&
+                           c >= newMinCol && c <= newMaxCol);
+
+            // Only redraw if the cell's selection state changed
+            if (wasInOld != isInNew) {
+                changedCells.append(CxSheetCellCoordinate(r, c));
+            }
+        }
+    }
+
+    // Always redraw the old and new cursor positions (cursor highlight may change)
+    changedCells.append(oldCurrent);
+    if (!(oldCurrent == newCurrent)) {
+        changedCells.append(newCurrent);
+    }
+
+    // Redraw only the changed cells
+    updateCells(changedCells);
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::updateCellHuntMove
 //
 // Optimized redraw for cell hunt cursor movement. Redraws old and new positions.
@@ -762,6 +869,11 @@ SheetView::getHighlightTypeForCell(int dataRow, int dataCol)
             dataCol == (int)cursorPos.getCol()) {
             return HIGHLIGHT_CURSOR;
         }
+
+        // Check if this is within the selection range (EDIT mode multi-cell selection)
+        if (_rangeSelectActive && isCellInSelectionRange(dataRow, dataCol)) {
+            return HIGHLIGHT_RANGE;
+        }
     }
 
     return HIGHLIGHT_NONE;
@@ -785,6 +897,34 @@ SheetView::isCellInHuntRange(int row, int col)
     int anchorCol = _huntAnchorCell.getCol();
     int currentRow = _huntCurrentCell.getRow();
     int currentCol = _huntCurrentCell.getCol();
+
+    // Normalize the range (min/max for each dimension)
+    int minRow = (anchorRow < currentRow) ? anchorRow : currentRow;
+    int maxRow = (anchorRow > currentRow) ? anchorRow : currentRow;
+    int minCol = (anchorCol < currentCol) ? anchorCol : currentCol;
+    int maxCol = (anchorCol > currentCol) ? anchorCol : currentCol;
+
+    return (row >= minRow && row <= maxRow && col >= minCol && col <= maxCol);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::isCellInSelectionRange
+//
+// Check if a cell is within the selection range (EDIT mode multi-cell selection).
+// The range is normalized so it works regardless of selection direction.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::isCellInSelectionRange(int row, int col)
+{
+    if (!_rangeSelectActive) {
+        return 0;
+    }
+
+    int anchorRow = _rangeAnchor.getRow();
+    int anchorCol = _rangeAnchor.getCol();
+    int currentRow = _rangeCurrent.getRow();
+    int currentCol = _rangeCurrent.getCol();
 
     // Normalize the range (min/max for each dimension)
     int minRow = (anchorRow < currentRow) ? anchorRow : currentRow;
@@ -848,9 +988,18 @@ SheetView::updateStatusLine(void)
     }
     leftDisplayWidth += 3;     // " ] "
 
-    // Build right part: cell(<address>)
-    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
-    CxString cellAddress = pos.toAddress();
+    // Build right part: cell(<address>) or cell(<anchor>:<current>) for range
+    CxString cellAddress;
+    if (_rangeSelectActive) {
+        // Show range: cell(A1:C3)
+        cellAddress = _rangeAnchor.toAddress();
+        cellAddress += ":";
+        cellAddress += _rangeCurrent.toAddress();
+    } else {
+        // Show single cell
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        cellAddress = pos.toAddress();
+    }
 
     CxString rightPart;
     rightPart += "cell(";

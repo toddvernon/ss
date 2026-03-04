@@ -73,6 +73,10 @@ public:
     CxColor *cellHuntRangeTextColor(void);
     CxColor *cellHuntRangeBackgroundColor(void);
 
+    // Range selection colors (for EDIT mode multi-cell selection)
+    CxColor *rangeSelectTextColor(void);
+    CxColor *rangeSelectBackgroundColor(void);
+
     // Color helper methods - apply foreground and background in one call
     void applyHeaderColors(CxScreen *screen);
     void applySelectedCellColors(CxScreen *screen);
@@ -80,6 +84,7 @@ public:
     void applyCommandLineColors(CxScreen *screen);
     void applyCellHuntColors(CxScreen *screen);
     void applyCellHuntRangeColors(CxScreen *screen);
+    void applyRangeSelectColors(CxScreen *screen);
     void resetColors(CxScreen *screen);
 
     void writeDefaults(CxString fname);
@@ -128,6 +133,10 @@ private:
     CxColor *_cellHuntBackgroundColor;
     CxColor *_cellHuntRangeTextColor;
     CxColor *_cellHuntRangeBackgroundColor;
+
+    // Range selection colors
+    CxColor *_rangeSelectTextColor;
+    CxColor *_rangeSelectBackgroundColor;
 
     CxJSONBase *_baseNode;
 };
