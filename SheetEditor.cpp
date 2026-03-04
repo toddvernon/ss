@@ -1636,8 +1636,28 @@ SheetEditor::commitDataEntry(void)
         int hasCurrency, hasPercent, hasThousands;
         double serialDate;
         CxString dateFormat;
+        CxString errorMsg;
 
-        if (CxSheetInputParser::tryParseDate(bufferText, &serialDate, &dateFormat)) {
+        // Check if input looks like an intentional date (has / or - between numbers)
+        int looksLikeDate = 0;
+        {
+            const char *p = bufferText.data();
+            int len = bufferText.length();
+            for (int i = 0; i < len; i++) {
+                if ((p[i] == '/' || p[i] == '-') && i > 0 && i < len - 1) {
+                    // Has a separator in the middle
+                    looksLikeDate = 1;
+                    break;
+                }
+            }
+        }
+
+        // Check if input looks like an intentional number (starts with $, ends with %)
+        int looksLikeCurrency = (bufferText.length() > 0 && bufferText.data()[0] == '$');
+        int looksLikePercent = (bufferText.length() > 0 &&
+                                bufferText.data()[bufferText.length() - 1] == '%');
+
+        if (CxSheetInputParser::tryParseDate(bufferText, &serialDate, &dateFormat, &errorMsg)) {
             // Parsed as date
             cell.setDouble(CxDouble(serialDate));
             sheetModel->setCell(pos, cell);
@@ -1648,8 +1668,14 @@ SheetEditor::commitDataEntry(void)
                 cellPtr->setAppAttribute("dateFormat", dateFormat.data());
             }
         }
+        else if (looksLikeDate) {
+            // User intended a date but parsing failed - show error, don't commit
+            setMessage(CxString("Date error: ") + errorMsg);
+            return;
+        }
         else if (CxSheetInputParser::tryParseNumber(bufferText, &value,
-                                                     &hasCurrency, &hasPercent, &hasThousands)) {
+                                                     &hasCurrency, &hasPercent, &hasThousands,
+                                                     &errorMsg)) {
             // Parsed as number with optional formatting
             cell.setDouble(CxDouble(value));
             sheetModel->setCell(pos, cell);
@@ -1668,8 +1694,13 @@ SheetEditor::commitDataEntry(void)
                 }
             }
         }
+        else if (looksLikeCurrency || looksLikePercent) {
+            // User intended a currency/percent but parsing failed - show error, don't commit
+            setMessage(CxString("Number error: ") + errorMsg);
+            return;
+        }
         else {
-            // Fall back to text
+            // Fall back to text (plain text input is always valid)
             cell.setText(bufferText);
             sheetModel->setCell(pos, cell);
         }
