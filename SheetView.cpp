@@ -18,6 +18,7 @@
 #include <cx/json/json_utf_object.h>
 #include <cx/json/json_utf_member.h>
 #include <cx/json/json_utf_number.h>
+#include <cx/sheetModel/sheetInputParser.h>
 
 #include "SheetView.h"
 #include "SpreadsheetDefaults.h"
@@ -470,8 +471,13 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
         case CxSheetCell::DOUBLE:
             {
                 double value = cell->getDouble().value;
+                // Check for date format first
+                if (cell->hasAppAttribute("dateFormat")) {
+                    CxString dateFormat = cell->getAppAttributeString("dateFormat");
+                    rawText = CxSheetInputParser::formatDate(value, dateFormat);
+                }
                 // Check if any number formatting attributes are set
-                if (cell->hasAppAttribute("currency") ||
+                else if (cell->hasAppAttribute("currency") ||
                     cell->hasAppAttribute("percent") ||
                     cell->hasAppAttribute("thousands") ||
                     cell->hasAppAttribute("decimalPlaces")) {
@@ -487,8 +493,13 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
         case CxSheetCell::FORMULA:
             {
                 double value = cell->getEvaluatedValue().value;
+                // Check for date format first
+                if (cell->hasAppAttribute("dateFormat")) {
+                    CxString dateFormat = cell->getAppAttributeString("dateFormat");
+                    rawText = CxSheetInputParser::formatDate(value, dateFormat);
+                }
                 // Check if any number formatting attributes are set
-                if (cell->hasAppAttribute("currency") ||
+                else if (cell->hasAppAttribute("currency") ||
                     cell->hasAppAttribute("percent") ||
                     cell->hasAppAttribute("thousands") ||
                     cell->hasAppAttribute("decimalPlaces")) {

@@ -75,9 +75,7 @@ class SheetEditor {
 
     enum DataEntryMode {
         ENTRY_NONE,             // not in data entry
-        ENTRY_TEXT,             // entering text (started with letter)
-        ENTRY_NUMBER,           // entering number (started with digit or +/-)
-        ENTRY_CURRENCY,         // entering currency (started with $)
+        ENTRY_GENERAL,          // general input - parsed at commit time
         ENTRY_FORMULA           // entering formula (started with =)
     };
 
@@ -203,6 +201,11 @@ class SheetEditor {
     DataEntryMode deduceEntryModeFromChar(char c);
     int isValidInputChar(char c, DataEntryMode mode);
     CxString getCellDisplayText(CxSheetCell *cell);
+
+    // post-commit parsing helpers (Excel-style type inference)
+    int tryParseNumber(CxString input, double *value, int *hasCurrency,
+                       int *hasPercent, int *hasThousands);
+    int tryParseDate(CxString input, double *serialDate, CxString *dateFormat);
 
     // decomposed command input handlers
     void handleCommandEnter(void);

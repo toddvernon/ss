@@ -19,6 +19,7 @@
 #include <cx/base/utfcharacter.h>
 #include <cx/base/file.h>
 #include <cx/json/json_utf_object.h>
+#include <cx/sheetModel/sheetInputParser.h>
 #include "SheetEditor.h"
 
 
@@ -1377,23 +1378,20 @@ SheetEditor::CMD_FormatColFit(CxString commandLine)
 // SheetEditor::deduceEntryModeFromChar
 //
 // Determine the appropriate data entry mode based on the first character typed.
+// Only '=' gets special treatment for formulas; everything else uses ENTRY_GENERAL
+// and type is determined at commit time (Excel-style).
 //-------------------------------------------------------------------------------------------------
 SheetEditor::DataEntryMode
 SheetEditor::deduceEntryModeFromChar(char c)
 {
-    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-        return ENTRY_TEXT;
-    } else if (c >= '0' && c <= '9') {
-        return ENTRY_NUMBER;
-    } else if (c == '=') {
+    if (c == '=') {
         return ENTRY_FORMULA;
-    } else if (c == '$') {
-        return ENTRY_CURRENCY;
-    } else if (c == '+' || c == '-') {
-        return ENTRY_NUMBER;
     }
-    // Default to text for other printable characters
-    return ENTRY_TEXT;
+    // All other printable characters use general mode
+    if (c >= 32 && c < 127) {
+        return ENTRY_GENERAL;
+    }
+    return ENTRY_NONE;
 }
 
 
@@ -1401,25 +1399,15 @@ SheetEditor::deduceEntryModeFromChar(char c)
 // SheetEditor::isValidInputChar
 //
 // Check if a character is valid input for the given data entry mode.
+// With post-commit parsing, both ENTRY_GENERAL and ENTRY_FORMULA accept all printable chars.
 //-------------------------------------------------------------------------------------------------
 int
 SheetEditor::isValidInputChar(char c, DataEntryMode mode)
 {
     switch (mode) {
-        case ENTRY_TEXT:
-            // Text accepts anything printable
-            return (c >= 32 && c < 127);
-
-        case ENTRY_NUMBER:
-            // Numbers accept digits, decimal point, +/-
-            return (c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-';
-
-        case ENTRY_CURRENCY:
-            // Currency accepts digits, decimal point ($ already in buffer)
-            return (c >= '0' && c <= '9') || c == '.';
-
+        case ENTRY_GENERAL:
         case ENTRY_FORMULA:
-            // Formulas accept anything printable
+            // Accept any printable character
             return (c >= 32 && c < 127);
 
         default:
@@ -1499,10 +1487,10 @@ SheetEditor::editCurrentCell(void)
         return;
     }
 
-    // If cell is empty, just enter text mode with empty buffer
+    // If cell is empty, just enter general mode with empty buffer
     if (cell == NULL || cell->getType() == CxSheetCell::EMPTY) {
         programMode = DATA_ENTRY;
-        _dataEntryMode = ENTRY_TEXT;
+        _dataEntryMode = ENTRY_GENERAL;
         _dataEntryBuffer.clear();
         _dataEntryCursorPos = 0;
         updateDataEntryDisplay();
@@ -1512,20 +1500,11 @@ SheetEditor::editCurrentCell(void)
     // Enter data entry mode with existing content
     programMode = DATA_ENTRY;
 
-    // Set mode based on cell type
-    switch (cell->getType()) {
-        case CxSheetCell::TEXT:
-            _dataEntryMode = ENTRY_TEXT;
-            break;
-        case CxSheetCell::DOUBLE:
-            _dataEntryMode = ENTRY_NUMBER;
-            break;
-        case CxSheetCell::FORMULA:
-            _dataEntryMode = ENTRY_FORMULA;
-            break;
-        default:
-            _dataEntryMode = ENTRY_TEXT;
-            break;
+    // Set mode based on cell type (formulas stay as ENTRY_FORMULA, everything else is ENTRY_GENERAL)
+    if (cell->getType() == CxSheetCell::FORMULA) {
+        _dataEntryMode = ENTRY_FORMULA;
+    } else {
+        _dataEntryMode = ENTRY_GENERAL;
     }
 
     // Load cell content into buffer (getCellDisplayText handles formatting)
@@ -1631,6 +1610,7 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
 // SheetEditor::commitDataEntry
 //
 // Commit the entered data to the current cell.
+// Uses post-commit parsing (Excel-style) to determine cell type from input.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::commitDataEntry(void)
@@ -1641,49 +1621,58 @@ SheetEditor::commitDataEntry(void)
     // Convert UTF buffer to bytes for cell storage
     CxString bufferText = _dataEntryBuffer.toBytes();
 
-    switch (_dataEntryMode) {
-        case ENTRY_TEXT:
+    if (_dataEntryMode == ENTRY_FORMULA) {
+        // Formula mode - strip leading '=' and parse as formula
+        CxString formulaText = bufferText;
+        if (formulaText.length() > 0 && formulaText.data()[0] == '=') {
+            formulaText = formulaText.subString(1, formulaText.length() - 1);
+        }
+        cell.setFormula(formulaText);
+        sheetModel->setCell(pos, cell);
+    }
+    else if (_dataEntryMode == ENTRY_GENERAL) {
+        // Post-commit parsing: try date, then number, then text
+        double value;
+        int hasCurrency, hasPercent, hasThousands;
+        double serialDate;
+        CxString dateFormat;
+
+        if (CxSheetInputParser::tryParseDate(bufferText, &serialDate, &dateFormat)) {
+            // Parsed as date
+            cell.setDouble(CxDouble(serialDate));
+            sheetModel->setCell(pos, cell);
+
+            // Set date format attribute
+            CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
+            if (cellPtr) {
+                cellPtr->setAppAttribute("dateFormat", dateFormat.data());
+            }
+        }
+        else if (CxSheetInputParser::tryParseNumber(bufferText, &value,
+                                                     &hasCurrency, &hasPercent, &hasThousands)) {
+            // Parsed as number with optional formatting
+            cell.setDouble(CxDouble(value));
+            sheetModel->setCell(pos, cell);
+
+            // Set format attributes based on input
+            CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
+            if (cellPtr) {
+                if (hasCurrency) {
+                    cellPtr->setAppAttribute("currency", "true");
+                }
+                if (hasPercent) {
+                    cellPtr->setAppAttribute("percent", "true");
+                }
+                if (hasThousands) {
+                    cellPtr->setAppAttribute("thousands", "true");
+                }
+            }
+        }
+        else {
+            // Fall back to text
             cell.setText(bufferText);
             sheetModel->setCell(pos, cell);
-            break;
-
-        case ENTRY_NUMBER:
-        {
-            // Parse as double
-            double value = atof(bufferText.data());
-            cell.setDouble(CxDouble(value));
-            sheetModel->setCell(pos, cell);
         }
-        break;
-
-        case ENTRY_CURRENCY:
-        {
-            // Skip the $ prefix when parsing
-            CxString numStr = bufferText;
-            if (numStr.length() > 0 && numStr.data()[0] == '$') {
-                numStr = numStr.subString(1, numStr.length() - 1);
-            }
-            double value = atof(numStr.data());
-            cell.setDouble(CxDouble(value));
-            sheetModel->setCell(pos, cell);
-            // TODO: Set currency formatting flag when formatting is implemented
-        }
-        break;
-
-        case ENTRY_FORMULA:
-        {
-            // Strip the leading '=' that's used for spreadsheet notation
-            CxString formulaText = bufferText;
-            if (formulaText.length() > 0 && formulaText.data()[0] == '=') {
-                formulaText = formulaText.subString(1, formulaText.length() - 1);
-            }
-            cell.setFormula(formulaText);
-            sheetModel->setCell(pos, cell);
-        }
-        break;
-
-        default:
-            break;
     }
 
     // Return to edit mode
@@ -1731,17 +1720,9 @@ SheetEditor::updateDataEntryDisplay(void)
     int prefixLen = 0;
 
     switch (_dataEntryMode) {
-        case ENTRY_TEXT:
-            display = CxString("text: ") + bufferBytes;
-            prefixLen = 6;  // "text: "
-            break;
-        case ENTRY_NUMBER:
-            display = CxString("number: ") + bufferBytes;
-            prefixLen = 8;  // "number: "
-            break;
-        case ENTRY_CURRENCY:
-            display = CxString("currency: ") + bufferBytes;
-            prefixLen = 10;  // "currency: "
+        case ENTRY_GENERAL:
+            display = CxString("input: ") + bufferBytes;
+            prefixLen = 7;  // "input: "
             break;
         case ENTRY_FORMULA:
             display = CxString("formula: ") + bufferBytes;
