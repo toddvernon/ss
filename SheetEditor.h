@@ -34,6 +34,22 @@
 
 //-------------------------------------------------------------------------------------------------
 //
+// ClipboardCell
+//
+// Represents a cell in the clipboard, storing its position offset relative to the clipboard
+// anchor and a copy of the cell data.
+//
+//-------------------------------------------------------------------------------------------------
+
+struct ClipboardCell {
+    int rowOffset;              // relative to anchor (0 for anchor cell)
+    int colOffset;              // relative to anchor
+    CxSheetCell cell;           // copy of the cell
+};
+
+
+//-------------------------------------------------------------------------------------------------
+//
 // SheetEditor
 //
 // Central coordinator for the spreadsheet application. Owns all views, screen, keyboard,
@@ -91,6 +107,7 @@ class SheetEditor {
     void handleArgumentModeInput(CxKeyAction keyAction);
 
     void resetPrompt(void);
+    void updateCommandLineDisplay(void);
     void setMessage(CxString message);
 
     // data entry methods
@@ -115,6 +132,10 @@ class SheetEditor {
     void CMD_InsertSymbol(CxString commandLine);
     void CMD_FormatWidth(CxString commandLine);
     void CMD_FormatWidthAuto(CxString commandLine);
+    void CMD_Copy(CxString commandLine);
+    void CMD_Cut(CxString commandLine);
+    void CMD_Paste(CxString commandLine);
+    void CMD_Clear(CxString commandLine);
 
     ProgramMode programMode;
 
@@ -160,6 +181,12 @@ class SheetEditor {
     CxSheetCellCoordinate _rangeAnchor;       // where selection started
     CxSheetCellCoordinate _rangeCurrent;      // current end of selection
 
+    // clipboard state
+    CxSList<ClipboardCell> _clipboard;
+    CxSheetCellCoordinate _clipboardAnchor;   // top-left of original copied range
+    int _clipboardRows;                       // dimensions of clipboard content
+    int _clipboardCols;
+
     // helper methods
     void enterCommandLineMode(void);
     void exitCommandLineMode(void);
@@ -178,6 +205,10 @@ class SheetEditor {
     // column width helpers
     void adjustColumnWidth(int delta);
     void autoFitColumnWidth(void);
+
+    // clipboard helpers
+    void copyRangeToClipboard(CxSheetCellCoordinate start, CxSheetCellCoordinate end);
+    CxString adjustFormulaReferences(CxString formula, int rowDelta, int colDelta);
 
     // resize callback - coordinates all redrawing
     void screenResizeCallback(void);

@@ -48,6 +48,8 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _cellHuntInsertPos(0)
 , _dataEntryCursorPos(0)
 , _rangeSelectActive(0)
+, _clipboardRows(0)
+, _clipboardCols(0)
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -385,12 +387,23 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         break;
 
         //-------------------------------------------------------------------------------------
-        // Control key sequences (Ctrl-X prefix commands)
+        // Control key sequences
         //-------------------------------------------------------------------------------------
         case CxKeyAction::CONTROL:
         {
-            if (keyAction.tag() == "X") {
+            CxString tag = keyAction.tag();
+
+            if (tag == "X") {
+                // Ctrl-X prefix commands
                 return dispatchControlX();
+            }
+            else if (tag == "K") {
+                // Ctrl-K: copy selection
+                CMD_Copy("");
+            }
+            else if (tag == "Y") {
+                // Ctrl-Y: paste
+                CMD_Paste("");
             }
         }
         break;
@@ -472,13 +485,15 @@ SheetEditor::enterCommandLineMode(void)
 // SheetEditor::exitCommandLineMode
 //
 // Transition from COMMANDLINE to EDIT mode.
+// Uses updateCommandLineDisplay() instead of resetPrompt() to preserve any message
+// that was set by the command handler. The message will be cleared on the next user action.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::exitCommandLineMode(void)
 {
     programMode = EDIT;
     _cmdInputState = CMD_INPUT_IDLE;
-    resetPrompt();
+    updateCommandLineDisplay();
     sheetView->updateScreen();
 }
 
@@ -882,15 +897,15 @@ SheetEditor::initCommandCompleters(void)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::resetPrompt
+// SheetEditor::updateCommandLineDisplay
 //
-// Reset the command line to show cell position and content.
+// Update the command line to show cell position and content.
 // For formulas, shows the formula text (with = prefix).
 // For other types, shows the display value.
-// Also clears any message on the message line (like "Loaded: ..." messages).
+// Does NOT clear the message line - messages persist until the next user action.
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::resetPrompt(void)
+SheetEditor::updateCommandLineDisplay(void)
 {
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
     CxSheetCell *cell = sheetModel->getCellPtr(pos);
@@ -904,6 +919,19 @@ SheetEditor::resetPrompt(void)
 
     commandLineView->setText(display);
     commandLineView->updateScreen();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::resetPrompt
+//
+// Reset the command line to show cell position and content, AND clear any message.
+// Called on user actions (cursor movement, typing, etc.) to clear feedback messages.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::resetPrompt(void)
+{
+    updateCommandLineDisplay();
 
     // Clear message line if it has content (messages disappear on first action)
     if (messageLineView->getText().length() > 0) {
@@ -1851,5 +1879,458 @@ SheetEditor::buildCellHuntReference(void)
     } else {
         // Single cell reference
         return _cellHuntCurrentPos.toAddress();
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::copyRangeToClipboard
+//
+// Copy cells from start to end coordinates into the clipboard. Stores each cell with its
+// offset from the top-left of the range.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::copyRangeToClipboard(CxSheetCellCoordinate start, CxSheetCellCoordinate end)
+{
+    // Clear existing clipboard
+    _clipboard.clear();
+
+    // Normalize range (ensure start is top-left, end is bottom-right)
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) {
+        int tmp = minRow;
+        minRow = maxRow;
+        maxRow = tmp;
+    }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) {
+        int tmp = minCol;
+        minCol = maxCol;
+        maxCol = tmp;
+    }
+
+    // Store dimensions and anchor
+    _clipboardRows = maxRow - minRow + 1;
+    _clipboardCols = maxCol - minCol + 1;
+    _clipboardAnchor.setRow(minRow);
+    _clipboardAnchor.setCol(minCol);
+
+    // Copy each cell
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *srcCell = sheetModel->getCellPtr(coord);
+
+            ClipboardCell clipCell;
+            clipCell.rowOffset = row - minRow;
+            clipCell.colOffset = col - minCol;
+
+            if (srcCell != NULL) {
+                clipCell.cell = *srcCell;  // copy the cell
+            }
+            // else clipCell.cell is default empty
+
+            _clipboard.append(clipCell);
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::adjustFormulaReferences
+//
+// Adjust cell references in a formula by the given row and column deltas.
+// Relative references are adjusted, absolute references ($) are preserved.
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetEditor::adjustFormulaReferences(CxString formula, int rowDelta, int colDelta)
+{
+    // Parse the formula to get variable and range lists
+    CxExpression expr(formula);
+    expr.Parse();
+
+    CxSList<CxString> ranges = expr.GetRangeList();
+    CxSList<CxString> vars = expr.GetVariableList();
+
+    CxString result = formula;
+
+    // Process ranges first (they contain cell references we shouldn't double-process)
+    for (int i = 0; i < (int)ranges.entries(); i++) {
+        CxString rangeStr = ranges.at(i);
+
+        // Parse the range (format: "A1:B2" or "$A$1:$B$2")
+        int colonPos = -1;
+        for (int j = 0; j < (int)rangeStr.length(); j++) {
+            if (rangeStr.data()[j] == ':') {
+                colonPos = j;
+                break;
+            }
+        }
+
+        if (colonPos > 0) {
+            CxString startStr = rangeStr.subString(0, colonPos);
+            CxString endStr = rangeStr.subString(colonPos + 1, rangeStr.length() - colonPos - 1);
+
+            CxSheetCellCoordinate startCoord(startStr);
+            CxSheetCellCoordinate endCoord(endStr);
+
+            // Adjust non-absolute coordinates
+            if (!startCoord.isRowAbsolute()) {
+                int newRow = (int)startCoord.getRow() + rowDelta;
+                if (newRow < 0) newRow = 0;
+                startCoord.setRow(newRow);
+            }
+            if (!startCoord.isColAbsolute()) {
+                int newCol = (int)startCoord.getCol() + colDelta;
+                if (newCol < 0) newCol = 0;
+                startCoord.setCol(newCol);
+            }
+            if (!endCoord.isRowAbsolute()) {
+                int newRow = (int)endCoord.getRow() + rowDelta;
+                if (newRow < 0) newRow = 0;
+                endCoord.setRow(newRow);
+            }
+            if (!endCoord.isColAbsolute()) {
+                int newCol = (int)endCoord.getCol() + colDelta;
+                if (newCol < 0) newCol = 0;
+                endCoord.setCol(newCol);
+            }
+
+            // Build new range string preserving absolute markers
+            CxString newRange = startCoord.toAbsoluteAddress() + ":" + endCoord.toAbsoluteAddress();
+
+            // Replace in result (first occurrence only since ranges are unique)
+            int pos = result.index(rangeStr);
+            if (pos >= 0) {
+                CxString before = result.subString(0, pos);
+                CxString after = result.subString(pos + rangeStr.length(),
+                                                   result.length() - pos - rangeStr.length());
+                result = before + newRange + after;
+            }
+        }
+    }
+
+    // Process single cell references (skip those that are part of ranges)
+    for (int i = 0; i < (int)vars.entries(); i++) {
+        CxString varStr = vars.at(i);
+
+        // Check if this variable is part of a range (skip if so)
+        int isPartOfRange = 0;
+        for (int j = 0; j < (int)ranges.entries(); j++) {
+            CxString rangeStr = ranges.at(j);
+            if (rangeStr.index(varStr) >= 0) {
+                isPartOfRange = 1;
+                break;
+            }
+        }
+        if (isPartOfRange) {
+            continue;
+        }
+
+        CxSheetCellCoordinate coord(varStr);
+
+        // Adjust non-absolute coordinates
+        if (!coord.isRowAbsolute()) {
+            int newRow = (int)coord.getRow() + rowDelta;
+            if (newRow < 0) newRow = 0;
+            coord.setRow(newRow);
+        }
+        if (!coord.isColAbsolute()) {
+            int newCol = (int)coord.getCol() + colDelta;
+            if (newCol < 0) newCol = 0;
+            coord.setCol(newCol);
+        }
+
+        // Build new reference preserving absolute markers
+        CxString newRef = coord.toAbsoluteAddress();
+
+        // Replace in result (careful to match whole reference, not substrings)
+        // We need to find exact matches, not partial matches like "A1" in "A10"
+        int searchPos = 0;
+        while (searchPos < (int)result.length()) {
+            int pos = result.index(varStr, searchPos);
+            if (pos < 0) break;
+
+            // Check if this is a complete reference (not part of a larger identifier)
+            int isBoundedStart = (pos == 0) ||
+                                  (!((result.data()[pos-1] >= 'A' && result.data()[pos-1] <= 'Z') ||
+                                     (result.data()[pos-1] >= 'a' && result.data()[pos-1] <= 'z') ||
+                                     (result.data()[pos-1] >= '0' && result.data()[pos-1] <= '9') ||
+                                     result.data()[pos-1] == '$'));
+
+            int endPos = pos + varStr.length();
+            int isBoundedEnd = (endPos >= (int)result.length()) ||
+                               (!((result.data()[endPos] >= 'A' && result.data()[endPos] <= 'Z') ||
+                                  (result.data()[endPos] >= 'a' && result.data()[endPos] <= 'z') ||
+                                  (result.data()[endPos] >= '0' && result.data()[endPos] <= '9')));
+
+            if (isBoundedStart && isBoundedEnd) {
+                CxString before = result.subString(0, pos);
+                CxString after = result.subString(endPos, result.length() - endPos);
+                result = before + newRef + after;
+                searchPos = pos + newRef.length();
+            } else {
+                searchPos = endPos;
+            }
+        }
+    }
+
+    return result;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Copy
+//
+// Copy the current selection (or current cell if no selection) to the clipboard.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Copy(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        // Single cell
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    copyRangeToClipboard(start, end);
+
+    int cellCount = (int)_clipboard.entries();
+    if (cellCount == 1) {
+        setMessage("(1 cell copied)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells copied)", cellCount);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Cut
+//
+// Cut the current selection (or current cell if no selection) to the clipboard.
+// Copies the cells and then clears the source.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Cut(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        // Single cell
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Copy first
+    copyRangeToClipboard(start, end);
+
+    int cellCount = (int)_clipboard.entries();
+
+    // Normalize range for clearing
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) {
+        int tmp = minRow;
+        minRow = maxRow;
+        maxRow = tmp;
+    }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) {
+        int tmp = minCol;
+        minCol = maxCol;
+        maxCol = tmp;
+    }
+
+    // Clear source cells
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL) {
+                cell->clear();
+                cell->removeAppAttribute("symbolFill");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        setMessage("(1 cell cut)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells cut)", cellCount);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Paste
+//
+// Paste clipboard contents at the current cursor position. Formulas have their references
+// adjusted based on the paste offset.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Paste(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    if (_clipboard.entries() == 0) {
+        setMessage("Clipboard is empty");
+        return;
+    }
+
+    // Get paste anchor (current position is top-left of paste)
+    CxSheetCellCoordinate pasteAnchor = sheetModel->getCurrentPosition();
+
+    // Calculate the delta from original position to paste position
+    // All cells move by the same delta: pasteAnchor - clipboardAnchor
+    int rowDelta = pasteAnchor.getRow() - _clipboardAnchor.getRow();
+    int colDelta = pasteAnchor.getCol() - _clipboardAnchor.getCol();
+
+    // Paste each cell
+    for (int i = 0; i < (int)_clipboard.entries(); i++) {
+        ClipboardCell clipCell = _clipboard.at(i);
+
+        int targetRow = pasteAnchor.getRow() + clipCell.rowOffset;
+        int targetCol = pasteAnchor.getCol() + clipCell.colOffset;
+
+        CxSheetCellCoordinate targetCoord;
+        targetCoord.setRow(targetRow);
+        targetCoord.setCol(targetCol);
+
+        CxSheetCell newCell = clipCell.cell;
+
+        // If it's a formula, adjust references
+        if (newCell.getType() == CxSheetCell::FORMULA) {
+            CxString adjustedFormula = adjustFormulaReferences(newCell.getFormulaText(),
+                                                                rowDelta, colDelta);
+            newCell.setFormula(adjustedFormula);
+        }
+
+        sheetModel->setCell(targetCoord, newCell);
+    }
+
+    // Clear range selection if active
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    int cellCount = (int)_clipboard.entries();
+    if (cellCount == 1) {
+        setMessage("(1 cell pasted)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells pasted)", cellCount);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Clear
+//
+// Clear the contents of the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Clear(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        // Single cell
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) {
+        int tmp = minRow;
+        minRow = maxRow;
+        maxRow = tmp;
+    }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) {
+        int tmp = minCol;
+        minCol = maxCol;
+        maxCol = tmp;
+    }
+
+    int cellCount = 0;
+
+    // Clear cells
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL) {
+                cell->clear();
+                cell->removeAppAttribute("symbolFill");
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        setMessage("(1 cell cleared)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells cleared)", cellCount);
+        setMessage(buf);
     }
 }

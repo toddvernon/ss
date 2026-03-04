@@ -45,6 +45,35 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_Quit,
       NULL },
 
+    //--- edit- ---------------------------------------------------------------
+    { "edit-copy",
+      NULL,
+      "Copy selection to clipboard",
+      0,
+      &SheetEditor::CMD_Copy,
+      NULL },
+
+    { "edit-cut",
+      NULL,
+      "Cut selection to clipboard",
+      0,
+      &SheetEditor::CMD_Cut,
+      NULL },
+
+    { "edit-paste",
+      NULL,
+      "Paste from clipboard",
+      0,
+      &SheetEditor::CMD_Paste,
+      NULL },
+
+    { "edit-clear",
+      NULL,
+      "Clear cell contents",
+      0,
+      &SheetEditor::CMD_Clear,
+      NULL },
+
     //--- format- -------------------------------------------------------------
     { "format-width",
       "<+n|-n>",
