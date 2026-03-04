@@ -40,6 +40,10 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
 , _huntRangeActive(0)
 , _rangeSelectActive(0)
 {
+    // Initialize all column widths to 0 (meaning use default)
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        _colWidths[i] = 0;
+    }
 }
 
 
@@ -108,24 +112,31 @@ void
 SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 {
     int visRows = visibleDataRows();
-    int visCols = visibleDataCols();
+    int screenWidth = screen->cols();
 
     for (int i = 0; i < (int)cells.entries(); i++) {
         CxSheetCellCoordinate coord = cells.at(i);
         int dataRow = coord.getRow();
         int dataCol = coord.getCol();
 
-        // Check if cell is visible
+        // Check if row is visible
         if (dataRow < _scrollRowOffset || dataRow >= _scrollRowOffset + visRows) {
             continue;  // row not visible
         }
-        if (dataCol < _scrollColOffset || dataCol >= _scrollColOffset + visCols) {
-            continue;  // column not visible
+
+        // Check if column is visible (must be >= scroll offset)
+        if (dataCol < _scrollColOffset) {
+            continue;  // column not visible (scrolled past)
         }
 
         // Calculate screen position
         int screenRow = _startRow + _colHeaderHeight + (dataRow - _scrollRowOffset);
-        int screenCol = _rowHeaderWidth + ((dataCol - _scrollColOffset) * _defaultColWidth);
+        int screenCol = getColumnScreenX(dataCol);
+
+        // Check if column is visible (on screen)
+        if (screenCol >= screenWidth) {
+            continue;  // column not visible (off right edge)
+        }
 
         HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCol);
         drawCell(screenRow, screenCol, dataRow, dataCol, highlightType);
@@ -192,23 +203,30 @@ SheetView::drawColumnHeaders(void)
         printf(" ");
     }
 
-    // Column headers
-    int numCols = visibleDataCols();
+    // Column headers - iterate until we run out of screen width
+    int screenX = _rowHeaderWidth;
+    int screenWidth = screen->cols();
     CxSheetCellCoordinate tempCoord;
 
-    for (int c = 0; c < numCols; c++) {
-        int dataCol = c + _scrollColOffset;
+    for (int dataCol = _scrollColOffset; screenX < screenWidth; dataCol++) {
+        int colWidth = getColumnWidth(dataCol);
         CxString colName = tempCoord.colToLetters(dataCol);
 
         // Center the column name in the column width
-        int padding = (_defaultColWidth - colName.length()) / 2;
-        for (int p = 0; p < padding; p++) {
+        int padding = (colWidth - colName.length()) / 2;
+        for (int p = 0; p < padding && screenX < screenWidth; p++) {
             printf(" ");
+            screenX++;
         }
-        printf("%s", colName.data());
-        int remaining = _defaultColWidth - padding - colName.length();
-        for (int p = 0; p < remaining; p++) {
+        // Print column name (truncate if needed)
+        for (int i = 0; i < (int)colName.length() && screenX < screenWidth; i++) {
+            printf("%c", colName.data()[i]);
+            screenX++;
+        }
+        int remaining = colWidth - padding - colName.length();
+        for (int p = 0; p < remaining && screenX < screenWidth; p++) {
             printf(" ");
+            screenX++;
         }
     }
 
@@ -256,18 +274,21 @@ void
 SheetView::drawCells(void)
 {
     int numRows = visibleDataRows();
-    int numCols = visibleDataCols();
+    int screenWidth = screen->cols();
 
     for (int r = 0; r < numRows; r++) {
         int screenRow = _startRow + _colHeaderHeight + r;
         int dataRow = r + _scrollRowOffset;
 
-        for (int c = 0; c < numCols; c++) {
-            int screenCol = _rowHeaderWidth + (c * _defaultColWidth);
-            int dataCol = c + _scrollColOffset;
+        // Draw columns until we run out of screen width
+        int screenCol = _rowHeaderWidth;
+        for (int dataCol = _scrollColOffset; screenCol < screenWidth; dataCol++) {
+            int colWidth = getColumnWidth(dataCol);
 
             HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCol);
             drawCell(screenRow, screenCol, dataRow, dataCol, highlightType);
+
+            screenCol += colWidth;
         }
     }
 }
@@ -288,8 +309,9 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
     CxSheetCellCoordinate coord(dataRow, dataCol);
     CxSheetCell *cell = sheetModel->getCellPtr(coord);
 
-    // Format cell content
-    CxString content = formatCellValue(cell, _defaultColWidth);
+    // Format cell content using per-column width
+    int colWidth = getColumnWidth(dataCol);
+    CxString content = formatCellValue(cell, colWidth);
 
     // Draw with appropriate colors based on highlight type
     switch (highlightType) {
@@ -591,8 +613,16 @@ SheetView::visibleDataRows(void)
 int
 SheetView::visibleDataCols(void)
 {
-    int availableWidth = screen->cols() - _rowHeaderWidth;
-    int cols = availableWidth / _defaultColWidth;
+    int screenWidth = screen->cols();
+    int usedWidth = _rowHeaderWidth;
+    int cols = 0;
+
+    // Count how many columns fit starting from scroll offset
+    for (int dataCol = _scrollColOffset; usedWidth < screenWidth && dataCol < MAX_COLUMNS; dataCol++) {
+        usedWidth += getColumnWidth(dataCol);
+        cols++;
+    }
+
     return cols > 0 ? cols : 1;
 }
 
@@ -610,7 +640,6 @@ SheetView::ensureCursorVisible(void)
     int col = pos.getCol();
 
     int visRows = visibleDataRows();
-    int visCols = visibleDataCols();
 
     // Vertical scrolling
     if (row < _scrollRowOffset) {
@@ -619,11 +648,24 @@ SheetView::ensureCursorVisible(void)
         _scrollRowOffset = row - visRows + 1;
     }
 
-    // Horizontal scrolling
+    // Horizontal scrolling - check if column is visible
     if (col < _scrollColOffset) {
+        // Scrolled too far right - scroll left to show this column
         _scrollColOffset = col;
-    } else if (col >= _scrollColOffset + visCols) {
-        _scrollColOffset = col - visCols + 1;
+    } else {
+        // Check if column extends past right edge of screen
+        int screenWidth = screen->cols();
+        int colScreenX = getColumnScreenX(col);
+        int colWidth = getColumnWidth(col);
+
+        if (colScreenX + colWidth > screenWidth) {
+            // Need to scroll right - find the minimum scroll offset that shows this column
+            // Try scrolling right one column at a time until the column is visible
+            while (colScreenX + colWidth > screenWidth && _scrollColOffset < col) {
+                _scrollColOffset++;
+                colScreenX = getColumnScreenX(col);
+            }
+        }
     }
 }
 
@@ -639,10 +681,10 @@ SheetView::placeCursor(void)
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
 
     int row = pos.getRow() - _scrollRowOffset;
-    int col = pos.getCol() - _scrollColOffset;
+    int dataCol = pos.getCol();
 
     int screenRow = _startRow + _colHeaderHeight + row;
-    int screenCol = _rowHeaderWidth + (col * _defaultColWidth);
+    int screenCol = getColumnScreenX(dataCol);
 
     CxScreen::placeCursor(screenRow, screenCol);
 }
@@ -667,6 +709,65 @@ SheetView::setDefaultColumnWidth(int width)
     if (width >= 3 && width <= 50) {
         _defaultColWidth = width;
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getColumnWidth
+//
+// Get width for specific column. Returns default if no custom width is set.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getColumnWidth(int col)
+{
+    if (col < 0 || col >= MAX_COLUMNS) {
+        return _defaultColWidth;
+    }
+    if (_colWidths[col] == 0) {
+        return _defaultColWidth;
+    }
+    return _colWidths[col];
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::setColumnWidth
+//
+// Set width for specific column. Use 0 to clear custom width.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setColumnWidth(int col, int width)
+{
+    if (col < 0 || col >= MAX_COLUMNS) {
+        return;
+    }
+    if (width < 0) {
+        width = 0;
+    }
+    if (width > 100) {
+        width = 100;
+    }
+    _colWidths[col] = width;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getColumnScreenX
+//
+// Get screen X position for a column, accounting for varying column widths.
+// This sums up widths of all columns from _scrollColOffset to col-1.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getColumnScreenX(int col)
+{
+    int screenX = _rowHeaderWidth;
+
+    // Sum widths of visible columns before this one
+    for (int c = _scrollColOffset; c < col; c++) {
+        screenX += getColumnWidth(c);
+    }
+
+    return screenX;
 }
 
 

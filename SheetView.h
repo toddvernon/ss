@@ -78,6 +78,15 @@ class SheetView {
     int getDefaultColumnWidth(void);
     void setDefaultColumnWidth(int width);
 
+    int getColumnWidth(int col);
+    // get width for specific column (returns default if not set)
+
+    void setColumnWidth(int col, int width);
+    // set width for specific column (0 clears custom width)
+
+    int getColumnScreenX(int col);
+    // get screen X position for a column (accounting for varying widths)
+
     // Cell hunt mode support
     void setCellHuntMode(int active, CxSheetCellCoordinate formulaCell,
                          CxSheetCellCoordinate huntCell);
@@ -122,6 +131,9 @@ class SheetView {
     int _colHeaderHeight;   // height of column header row (1)
 
     int _defaultColWidth;   // default column width in characters
+
+    static const int MAX_COLUMNS = 702;  // A-ZZ (26 + 26*26)
+    int _colWidths[MAX_COLUMNS];         // per-column widths (0 = use default)
 
     int _scrollRowOffset;   // first visible data row (0-based)
     int _scrollColOffset;   // first visible data column (0-based)
