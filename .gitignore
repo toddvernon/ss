@@ -7,3 +7,6 @@ linux_*/
 *.swo
 *~
 .DS_Store
+
+# Test spreadsheets
+*.sheet
