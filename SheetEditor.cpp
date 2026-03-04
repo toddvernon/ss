@@ -1652,10 +1652,34 @@ SheetEditor::commitDataEntry(void)
             }
         }
 
-        // Check if input looks like an intentional number (starts with $, ends with %)
+        // Check if input looks like an intentional number
+        // (starts with $, ends with %, or contains only numeric characters)
         int looksLikeCurrency = (bufferText.length() > 0 && bufferText.data()[0] == '$');
         int looksLikePercent = (bufferText.length() > 0 &&
                                 bufferText.data()[bufferText.length() - 1] == '%');
+        int looksLikeNumber = 0;
+        if (!looksLikeDate) {
+            // Check if all characters are numeric (digits, ., ,, +, -, $, %, space)
+            const char *p = bufferText.data();
+            int len = bufferText.length();
+            int hasDigit = 0;
+            looksLikeNumber = 1;
+            for (int i = 0; i < len; i++) {
+                char c = p[i];
+                if (c >= '0' && c <= '9') {
+                    hasDigit = 1;
+                } else if (c != '.' && c != ',' && c != '+' && c != '-' &&
+                           c != '$' && c != '%' && c != ' ') {
+                    // Has a non-numeric character - it's text
+                    looksLikeNumber = 0;
+                    break;
+                }
+            }
+            // Must have at least one digit to look like a number
+            if (!hasDigit) {
+                looksLikeNumber = 0;
+            }
+        }
 
         if (CxSheetInputParser::tryParseDate(bufferText, &serialDate, &dateFormat, &errorMsg)) {
             // Parsed as date
@@ -1694,8 +1718,8 @@ SheetEditor::commitDataEntry(void)
                 }
             }
         }
-        else if (looksLikeCurrency || looksLikePercent) {
-            // User intended a currency/percent but parsing failed - show error, don't commit
+        else if (looksLikeCurrency || looksLikePercent || looksLikeNumber) {
+            // User intended a number but parsing failed - show error, don't commit
             setMessage(CxString("Number error: ") + errorMsg);
             return;
         }
