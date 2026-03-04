@@ -18,6 +18,7 @@
 #include <cx/base/utfstring.h>
 #include <cx/base/utfcharacter.h>
 #include <cx/base/file.h>
+#include <cx/json/json_utf_object.h>
 #include "SheetEditor.h"
 
 
@@ -108,6 +109,14 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     sheetView = new SheetView(screen, sheetModel, spreadsheetDefaults, 0, sheetEndRow);
     commandLineView = new CommandLineView(screen, spreadsheetDefaults, sheetEndRow + 1);
     messageLineView = new MessageLineView(screen, spreadsheetDefaults, sheetEndRow + 2);
+
+    //---------------------------------------------------------------------------------------------
+    // Load column widths from app data (if file was loaded)
+    //---------------------------------------------------------------------------------------------
+    if (fileLoadResult) {
+        CxJSONUTFObject *appData = sheetModel->getAppData();
+        sheetView->loadColumnWidthsFromAppData(appData);
+    }
 
     //---------------------------------------------------------------------------------------------
     // Initialize command completers
@@ -918,6 +927,111 @@ SheetEditor::setMessage(CxString message)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::adjustColumnWidth
+//
+// Adjust the width of the current column (or all columns in selection) by delta.
+// Delta is typically +1 or -1. Minimum width is 3 characters.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::adjustColumnWidth(int delta)
+{
+    int minCol, maxCol;
+
+    if (_rangeSelectActive) {
+        // Apply to all columns in selection
+        minCol = _rangeAnchor.getCol();
+        maxCol = _rangeCurrent.getCol();
+        if (minCol > maxCol) {
+            int tmp = minCol;
+            minCol = maxCol;
+            maxCol = tmp;
+        }
+    } else {
+        // Apply to current column only
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        minCol = pos.getCol();
+        maxCol = minCol;
+    }
+
+    // Adjust width of each column in range
+    for (int col = minCol; col <= maxCol; col++) {
+        int currentWidth = sheetView->getColumnWidth(col);
+        int newWidth = currentWidth + delta;
+        if (newWidth < 3) {
+            newWidth = 3;  // minimum width
+        }
+        sheetView->setColumnWidth(col, newWidth);
+    }
+
+    // Redraw the sheet
+    sheetView->updateScreen();
+    sheetView->updateStatusLine();
+    resetPrompt();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::autoFitColumnWidth
+//
+// Auto-fit the width of the current column (or all columns in selection) to content.
+// Scans all cells in the column to find the maximum content width.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::autoFitColumnWidth(void)
+{
+    int minCol, maxCol;
+
+    if (_rangeSelectActive) {
+        // Apply to all columns in selection
+        minCol = _rangeAnchor.getCol();
+        maxCol = _rangeCurrent.getCol();
+        if (minCol > maxCol) {
+            int tmp = minCol;
+            minCol = maxCol;
+            maxCol = tmp;
+        }
+    } else {
+        // Apply to current column only
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        minCol = pos.getCol();
+        maxCol = minCol;
+    }
+
+    // Auto-fit each column in range
+    for (int col = minCol; col <= maxCol; col++) {
+        int maxWidth = 3;  // minimum width
+
+        // Scan all rows for this column
+        unsigned long numRows = sheetModel->numberOfRows();
+        for (unsigned long row = 0; row < numRows; row++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL) {
+                CxString text = getCellDisplayText(cell);
+                int len = text.length();
+                if (len > maxWidth) {
+                    maxWidth = len;
+                }
+            }
+        }
+
+        // Add a little padding
+        maxWidth += 1;
+
+        // Set the column width
+        sheetView->setColumnWidth(col, maxWidth);
+    }
+
+    // Redraw the sheet
+    sheetView->updateScreen();
+    sheetView->updateStatusLine();
+    resetPrompt();
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::screenResizeCallback
 //
 // Called when terminal size changes. Coordinates recalculation and redrawing of all views.
@@ -993,6 +1107,11 @@ SheetEditor::CMD_Load(CxString commandLine)
     if (sheetModel->loadSheet(filepath)) {
         _filePath = filepath;
         sheetView->setFilePath(_filePath);
+
+        // Load column widths from app data
+        CxJSONUTFObject *appData = sheetModel->getAppData();
+        sheetView->loadColumnWidthsFromAppData(appData);
+
         setMessage(CxString("Loaded: ") + filepath);
         sheetView->updateScreen();
     } else {
@@ -1021,6 +1140,14 @@ SheetEditor::CMD_Save(CxString commandLine)
         }
         filepath = _filePath;
     }
+
+    // Save column widths to app data before saving
+    CxJSONUTFObject *appData = sheetModel->getAppData();
+    if (appData == NULL) {
+        appData = new CxJSONUTFObject();
+        sheetModel->setAppData(appData);
+    }
+    sheetView->saveColumnWidthsToAppData(appData);
 
     // Try to save the file
     if (sheetModel->saveSheet(filepath)) {
@@ -1077,6 +1204,63 @@ SheetEditor::CMD_InsertSymbol(CxString commandLine)
     // Update display
     sheetView->updateScreen();
     setMessage(CxString("Inserted: ") + symbolType);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatWidth
+//
+// Adjust column width by a relative amount (+n or -n).
+// Example: "format-width +5" increases width by 5, "format-width -3" decreases by 3.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatWidth(CxString commandLine)
+{
+    CxString widthStr = commandLine;
+    widthStr.stripLeading(" \t");
+    widthStr.stripTrailing(" \t\n\r");
+
+    if (widthStr.length() == 0) {
+        setMessage("Usage: format-width +n or -n");
+        return;
+    }
+
+    // Parse the delta value (must start with + or -)
+    char firstChar = widthStr.data()[0];
+    if (firstChar != '+' && firstChar != '-') {
+        setMessage("Use +n to increase or -n to decrease width");
+        return;
+    }
+
+    int delta = atoi(widthStr.data());
+    if (delta == 0) {
+        setMessage("Width change must be non-zero");
+        return;
+    }
+
+    // Use the existing adjustColumnWidth which handles range selection
+    adjustColumnWidth(delta);
+
+    if (delta > 0) {
+        setMessage(CxString("Column width increased by ") + CxString(delta));
+    } else {
+        setMessage(CxString("Column width decreased by ") + CxString(-delta));
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatWidthAuto
+//
+// Auto-fit the column width of the current column (or all columns in selection) to content.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatWidthAuto(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    autoFitColumnWidth();
+    setMessage("Column width auto-fitted");
 }
 
 

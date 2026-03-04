@@ -268,6 +268,11 @@ The foundational data model for ss:
 - **CxSheetDependencyGraph** - formula recalculation ordering
 - **CxSheetVariableDatabase** - resolves cell references in formulas
 
+**IMPORTANT: sheetModel is a pure compute structure.** It contains NO visual attributes (column widths, colors, fonts, etc.). Visual attributes are:
+- Stored in the app layer (SheetView, SheetEditor)
+- Persisted via `sheetModel->getAppData()`/`setAppData()` which preserves unknown JSON keys
+- This separation allows sheetModel to be used by non-visual tools (CLI processors, automation)
+
 ### expression (cx/expression)
 - **CxExpression** - parses and evaluates formulas
 - Uses CxSheetVariableDatabase for cell reference resolution

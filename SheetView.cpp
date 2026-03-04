@@ -15,6 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <cx/json/json_utf_object.h>
+#include <cx/json/json_utf_member.h>
+#include <cx/json/json_utf_number.h>
+
 #include "SheetView.h"
 #include "SpreadsheetDefaults.h"
 
@@ -1129,4 +1133,139 @@ SheetView::updateStatusLine(void)
 
     screen->resetColors();
     fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::loadColumnWidthsFromAppData
+//
+// Load column widths from app data (after sheet load).
+// Expected format: { "columns": { "A": 12, "B": 25, ... } }
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
+{
+    if (appData == NULL) {
+        return;
+    }
+
+    // Look for "columns" object
+    CxJSONUTFMember *columnsMember = appData->find("columns");
+    if (columnsMember == NULL) {
+        return;
+    }
+
+    CxJSONUTFBase *columnsBase = columnsMember->object();
+    if (columnsBase == NULL || columnsBase->type() != CxJSONUTFBase::OBJECT) {
+        return;
+    }
+
+    CxJSONUTFObject *columns = (CxJSONUTFObject *)columnsBase;
+
+    // Iterate through all column width entries
+    int numEntries = columns->entries();
+    for (int i = 0; i < numEntries; i++) {
+        CxJSONUTFMember *member = columns->at(i);
+        if (member == NULL) {
+            continue;
+        }
+
+        // Get the column letter (e.g., "A", "B", "AA")
+        CxUTFString colName = member->var();
+        CxString colNameStr = colName.toBytes();
+
+        // Get the width value
+        CxJSONUTFBase *widthBase = member->object();
+        if (widthBase == NULL || widthBase->type() != CxJSONUTFBase::NUMBER) {
+            continue;
+        }
+
+        CxJSONUTFNumber *widthNum = (CxJSONUTFNumber *)widthBase;
+        int width = (int)widthNum->get();
+
+        // Convert column letter to column index
+        CxSheetCellCoordinate coord;
+        int col = coord.lettersToCol(colNameStr);
+
+        // Set the column width
+        if (col >= 0 && col < MAX_COLUMNS) {
+            _colWidths[col] = width;
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::saveColumnWidthsToAppData
+//
+// Save column widths to app data (before sheet save).
+// Writes format: { "columns": { "A": 12, "B": 25, ... } }
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
+{
+    if (appData == NULL) {
+        return;
+    }
+
+    // Check if any columns have custom widths
+    int hasCustomWidths = 0;
+    for (int col = 0; col < MAX_COLUMNS; col++) {
+        if (_colWidths[col] != 0) {
+            hasCustomWidths = 1;
+            break;
+        }
+    }
+
+    if (!hasCustomWidths) {
+        // No custom widths - remove existing columns entry if present
+        CxJSONUTFMember *existing = appData->find("columns");
+        if (existing != NULL) {
+            // Find and remove it
+            int numEntries = appData->entries();
+            for (int i = 0; i < numEntries; i++) {
+                CxJSONUTFMember *m = appData->at(i);
+                CxUTFString mname = m->var();
+                if (mname.toBytes() == "columns") {
+                    appData->removeAt(i);
+                    delete existing;
+                    break;
+                }
+            }
+        }
+        return;
+    }
+
+    // Create new columns object
+    CxJSONUTFObject *columns = new CxJSONUTFObject();
+
+    // Add entries for each column with custom width
+    CxSheetCellCoordinate coord;  // for colToLetters helper
+    for (int col = 0; col < MAX_COLUMNS; col++) {
+        if (_colWidths[col] != 0) {
+            CxString colName = coord.colToLetters(col);
+            CxJSONUTFNumber *widthNum = new CxJSONUTFNumber((double)_colWidths[col]);
+            CxJSONUTFMember *member = new CxJSONUTFMember(colName.data(), widthNum);
+            columns->append(member);
+        }
+    }
+
+    // Remove existing "columns" entry if present
+    CxJSONUTFMember *existing = appData->find("columns");
+    if (existing != NULL) {
+        int numEntries = appData->entries();
+        for (int i = 0; i < numEntries; i++) {
+            CxJSONUTFMember *m = appData->at(i);
+            CxUTFString mname = m->var();
+            if (mname.toBytes() == "columns") {
+                appData->removeAt(i);
+                delete existing;
+                break;
+            }
+        }
+    }
+
+    // Add the new columns object
+    CxJSONUTFMember *columnsMember = new CxJSONUTFMember("columns", columns);
+    appData->append(columnsMember);
 }

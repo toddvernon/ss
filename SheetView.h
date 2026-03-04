@@ -21,6 +21,7 @@
 #include <cx/sheetModel/sheetCellCoordinate.h>
 
 class SpreadsheetDefaults;  // forward declaration
+class CxJSONUTFObject;      // forward declaration
 
 #ifndef _SheetView_h_
 #define _SheetView_h_
@@ -115,6 +116,12 @@ class SheetView {
 
     void updateStatusLine(void);
     // update the status/divider line (shows filename and cell position)
+
+    void loadColumnWidthsFromAppData(CxJSONUTFObject* appData);
+    // load column widths from app data (after sheet load)
+
+    void saveColumnWidthsToAppData(CxJSONUTFObject* appData);
+    // save column widths to app data (before sheet save)
 
   private:
 

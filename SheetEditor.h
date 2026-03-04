@@ -113,6 +113,8 @@ class SheetEditor {
     void CMD_Load(CxString commandLine);
     void CMD_Save(CxString commandLine);
     void CMD_InsertSymbol(CxString commandLine);
+    void CMD_FormatWidth(CxString commandLine);
+    void CMD_FormatWidthAuto(CxString commandLine);
 
     ProgramMode programMode;
 
@@ -172,6 +174,10 @@ class SheetEditor {
     void handleCommandEnter(void);
     void handleCommandTab(void);
     void handleCommandChar(CxKeyAction keyAction);
+
+    // column width helpers
+    void adjustColumnWidth(int delta);
+    void autoFitColumnWidth(void);
 
     // resize callback - coordinates all redrawing
     void screenResizeCallback(void);

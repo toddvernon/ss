@@ -45,6 +45,21 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_Quit,
       NULL },
 
+    //--- format- -------------------------------------------------------------
+    { "format-width",
+      "<+n|-n>",
+      "Adjust column width (+n wider, -n narrower)",
+      CMD_FLAG_NEEDS_ARG,
+      &SheetEditor::CMD_FormatWidth,
+      NULL },
+
+    { "format-width-auto",
+      NULL,
+      "Auto-fit column width to content",
+      0,
+      &SheetEditor::CMD_FormatWidthAuto,
+      NULL },
+
     //--- insert- -------------------------------------------------------------
     { "insert-symbol",
       "<type>",
