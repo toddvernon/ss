@@ -417,6 +417,15 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
 
     int displayLen = utfText.displayWidth();
 
+    // Determine alignment: check cell attribute, else use default (text=left, numbers=right)
+    CxString alignment = "left";
+    if (cell->hasAppAttribute("align")) {
+        alignment = cell->getAppAttributeString("align");
+    } else if (cell->getType() != CxSheetCell::TEXT) {
+        // Default: numbers are right-aligned
+        alignment = "right";
+    }
+
     if (displayLen >= width) {
         // Truncate by characters (not bytes) to fit width
         CxUTFString truncated;
@@ -436,19 +445,33 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
             result = result + " ";
         }
     } else {
-        // Right-align numbers, left-align text
-        if (cell->getType() == CxSheetCell::TEXT) {
-            result = rawText;
-            for (int i = displayLen; i < width; i++) {
-                result = result + " ";
-            }
-        } else {
-            // Right-align numbers - pad on left
+        int padding = width - displayLen;
+
+        if (alignment == "center") {
+            // Center: split padding between left and right
+            int leftPad = padding / 2;
+            int rightPad = padding - leftPad;
             result = "";
-            for (int i = displayLen; i < width; i++) {
+            for (int i = 0; i < leftPad; i++) {
                 result = result + " ";
             }
             result = result + rawText;
+            for (int i = 0; i < rightPad; i++) {
+                result = result + " ";
+            }
+        } else if (alignment == "right") {
+            // Right-align: pad on left
+            result = "";
+            for (int i = 0; i < padding; i++) {
+                result = result + " ";
+            }
+            result = result + rawText;
+        } else {
+            // Left-align (default): pad on right
+            result = rawText;
+            for (int i = 0; i < padding; i++) {
+                result = result + " ";
+            }
         }
     }
 

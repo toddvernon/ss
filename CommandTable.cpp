@@ -89,6 +89,27 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_FormatWidthAuto,
       NULL },
 
+    { "format-align-left",
+      NULL,
+      "Left-align cell contents",
+      0,
+      &SheetEditor::CMD_FormatAlignLeft,
+      NULL },
+
+    { "format-align-center",
+      NULL,
+      "Center cell contents",
+      0,
+      &SheetEditor::CMD_FormatAlignCenter,
+      NULL },
+
+    { "format-align-right",
+      NULL,
+      "Right-align cell contents",
+      0,
+      &SheetEditor::CMD_FormatAlignRight,
+      NULL },
+
     //--- insert- -------------------------------------------------------------
     { "insert-symbol",
       "<type>",

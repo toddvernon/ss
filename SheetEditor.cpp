@@ -2334,3 +2334,234 @@ SheetEditor::CMD_Clear(CxString commandLine)
         setMessage(buf);
     }
 }
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatAlignLeft
+//
+// Set left alignment on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatAlignLeft(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) {
+        int tmp = minRow;
+        minRow = maxRow;
+        maxRow = tmp;
+    }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) {
+        int tmp = minCol;
+        minCol = maxCol;
+        maxCol = tmp;
+    }
+
+    int cellCount = 0;
+
+    // Apply alignment
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            // Get or create cell
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("align", "left");
+                sheetModel->setCell(coord, newCell);
+            } else {
+                cell->setAppAttribute("align", "left");
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        setMessage("(1 cell left-aligned)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells left-aligned)", cellCount);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatAlignCenter
+//
+// Set center alignment on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatAlignCenter(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) {
+        int tmp = minRow;
+        minRow = maxRow;
+        maxRow = tmp;
+    }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) {
+        int tmp = minCol;
+        minCol = maxCol;
+        maxCol = tmp;
+    }
+
+    int cellCount = 0;
+
+    // Apply alignment
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            // Get or create cell
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("align", "center");
+                sheetModel->setCell(coord, newCell);
+            } else {
+                cell->setAppAttribute("align", "center");
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        setMessage("(1 cell centered)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells centered)", cellCount);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatAlignRight
+//
+// Set right alignment on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatAlignRight(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) {
+        int tmp = minRow;
+        minRow = maxRow;
+        maxRow = tmp;
+    }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) {
+        int tmp = minCol;
+        minCol = maxCol;
+        maxCol = tmp;
+    }
+
+    int cellCount = 0;
+
+    // Apply alignment
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            // Get or create cell
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("align", "right");
+                sheetModel->setCell(coord, newCell);
+            } else {
+                cell->setAppAttribute("align", "right");
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        setMessage("(1 cell right-aligned)");
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells right-aligned)", cellCount);
+        setMessage(buf);
+    }
+}
