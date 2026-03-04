@@ -26,10 +26,10 @@ When the user refers to:
 
 ## Build Instructions
 ```bash
-make
+make clean; make
 ```
 
-**Always run a complete `make` after code changes** - never compile individual files separately. The build is fast and a full make avoids occasional app crashes that can occur when only some files are recompiled.
+**Always run `make clean; make` after code changes** - partial builds frequently cause runtime issues (commands not working, crashes, stale behavior). The build is fast and a clean rebuild avoids these problems.
 
 ## Project Structure
 - `Ss.cpp` - main entry point

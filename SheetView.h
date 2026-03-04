@@ -182,6 +182,9 @@ class SheetView {
     CxString formatCellValue(CxSheetCell *cell, int width);
     // format cell contents for display
 
+    CxString formatNumber(double value, CxSheetCell *cell);
+    // format number with currency, decimals, percent, thousands based on cell attributes
+
     CxString formatSymbolFill(CxString symbolType, int width);
     // format symbol fill cells (box drawing)
 };

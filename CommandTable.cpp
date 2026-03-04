@@ -74,40 +74,70 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_Clear,
       NULL },
 
-    //--- format- -------------------------------------------------------------
-    { "format-width",
+    //--- format-col- (column operations) ----------------------------------------
+    { "format-col-width",
       "<+n|-n>",
       "Adjust column width (+n wider, -n narrower)",
       CMD_FLAG_NEEDS_ARG,
-      &SheetEditor::CMD_FormatWidth,
+      &SheetEditor::CMD_FormatColWidth,
       NULL },
 
-    { "format-width-auto",
+    { "format-col-fit",
       NULL,
       "Auto-fit column width to content",
       0,
-      &SheetEditor::CMD_FormatWidthAuto,
+      &SheetEditor::CMD_FormatColFit,
       NULL },
 
-    { "format-align-left",
+    //--- format-cell-align- (cell alignment) -------------------------------------
+    { "format-cell-align-left",
       NULL,
       "Left-align cell contents",
       0,
-      &SheetEditor::CMD_FormatAlignLeft,
+      &SheetEditor::CMD_FormatCellAlignLeft,
       NULL },
 
-    { "format-align-center",
+    { "format-cell-align-center",
       NULL,
       "Center cell contents",
       0,
-      &SheetEditor::CMD_FormatAlignCenter,
+      &SheetEditor::CMD_FormatCellAlignCenter,
       NULL },
 
-    { "format-align-right",
+    { "format-cell-align-right",
       NULL,
       "Right-align cell contents",
       0,
-      &SheetEditor::CMD_FormatAlignRight,
+      &SheetEditor::CMD_FormatCellAlignRight,
+      NULL },
+
+    //--- format-cell-number- (number formatting) ---------------------------------
+    { "format-cell-number-currency",
+      NULL,
+      "Toggle currency format ($)",
+      0,
+      &SheetEditor::CMD_FormatCellNumberCurrency,
+      NULL },
+
+    { "format-cell-number-decimal",
+      "<n>",
+      "Set decimal places (0-10)",
+      CMD_FLAG_NEEDS_ARG,
+      &SheetEditor::CMD_FormatCellNumberDecimal,
+      NULL },
+
+    { "format-cell-number-percent",
+      NULL,
+      "Toggle percent format (%)",
+      0,
+      &SheetEditor::CMD_FormatCellNumberPercent,
+      NULL },
+
+    { "format-cell-number-thousands",
+      NULL,
+      "Toggle thousands separators (,)",
+      0,
+      &SheetEditor::CMD_FormatCellNumberThousands,
       NULL },
 
     //--- insert- -------------------------------------------------------------

@@ -354,6 +354,87 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::formatNumber
+//
+// Format a numeric value based on cell attributes:
+//   - "currency" (bool): prefix with $
+//   - "decimalPlaces" (int): fixed decimal places (default: auto)
+//   - "percent" (bool): multiply by 100 and suffix with %
+//   - "thousands" (bool): add comma separators
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::formatNumber(double value, CxSheetCell *cell)
+{
+    int isCurrency = cell->getAppAttributeBool("currency", false) ? 1 : 0;
+    int isPercent = cell->getAppAttributeBool("percent", false) ? 1 : 0;
+    int hasThousands = cell->getAppAttributeBool("thousands", false) ? 1 : 0;
+    int hasDecimalPlaces = cell->hasAppAttribute("decimalPlaces") ? 1 : 0;
+    int decimalPlaces = cell->getAppAttributeInt("decimalPlaces", 2);
+
+    // Apply percent transformation first
+    if (isPercent) {
+        value = value * 100.0;
+    }
+
+    // Format the number
+    char buf[128];
+    if (hasDecimalPlaces || isCurrency) {
+        // Fixed decimal places
+        snprintf(buf, sizeof(buf), "%.*f", decimalPlaces, value);
+    } else {
+        // Auto format (use %g for compact representation)
+        snprintf(buf, sizeof(buf), "%g", value);
+    }
+
+    CxString numStr(buf);
+
+    // Add thousands separators if requested
+    if (hasThousands) {
+        // Find the decimal point (if any)
+        int decimalPos = -1;
+        for (int i = 0; i < (int)numStr.length(); i++) {
+            if (numStr.data()[i] == '.') {
+                decimalPos = i;
+                break;
+            }
+        }
+
+        // Get integer part
+        CxString intPart = (decimalPos >= 0) ? numStr.subString(0, decimalPos) : numStr;
+        CxString fracPart = (decimalPos >= 0) ? numStr.subString(decimalPos, numStr.length() - decimalPos) : "";
+
+        // Handle negative sign
+        CxString sign = "";
+        if (intPart.length() > 0 && intPart.data()[0] == '-') {
+            sign = "-";
+            intPart = intPart.subString(1, intPart.length() - 1);
+        }
+
+        // Insert commas every 3 digits from the right
+        CxString withCommas = "";
+        int len = intPart.length();
+        for (int i = 0; i < len; i++) {
+            if (i > 0 && (len - i) % 3 == 0) {
+                withCommas = withCommas + ",";
+            }
+            withCommas = withCommas + CxString(intPart.data()[i]);
+        }
+
+        numStr = sign + withCommas + fracPart;
+    }
+
+    // Build final result with suffix (currency prefix handled separately in formatCellValue)
+    CxString result = numStr;
+
+    if (isPercent) {
+        result = result + CxString("%");
+    }
+
+    return result;
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::formatCellValue
 //
 // Format cell contents for display, truncating or padding as needed.
@@ -388,17 +469,35 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
 
         case CxSheetCell::DOUBLE:
             {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
-                rawText = CxString(buf);
+                double value = cell->getDouble().value;
+                // Check if any number formatting attributes are set
+                if (cell->hasAppAttribute("currency") ||
+                    cell->hasAppAttribute("percent") ||
+                    cell->hasAppAttribute("thousands") ||
+                    cell->hasAppAttribute("decimalPlaces")) {
+                    rawText = formatNumber(value, cell);
+                } else {
+                    char buf[64];
+                    snprintf(buf, sizeof(buf), "%g", value);
+                    rawText = CxString(buf);
+                }
             }
             break;
 
         case CxSheetCell::FORMULA:
             {
-                char buf[64];
-                snprintf(buf, sizeof(buf), "%g", cell->getEvaluatedValue().value);
-                rawText = CxString(buf);
+                double value = cell->getEvaluatedValue().value;
+                // Check if any number formatting attributes are set
+                if (cell->hasAppAttribute("currency") ||
+                    cell->hasAppAttribute("percent") ||
+                    cell->hasAppAttribute("thousands") ||
+                    cell->hasAppAttribute("decimalPlaces")) {
+                    rawText = formatNumber(value, cell);
+                } else {
+                    char buf[64];
+                    snprintf(buf, sizeof(buf), "%g", value);
+                    rawText = CxString(buf);
+                }
             }
             break;
 
@@ -426,7 +525,62 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
         alignment = "right";
     }
 
-    if (displayLen >= width) {
+    // Check for currency - needs special handling ($ always left-justified)
+    int isCurrency = cell->getAppAttributeBool("currency", false) ? 1 : 0;
+
+    if (isCurrency && width > 1) {
+        // Currency: $ is always at left, number aligns in remaining space
+        int availWidth = width - 1;  // space after $
+
+        if (displayLen >= availWidth) {
+            // Truncate number to fit
+            CxUTFString truncated;
+            int currentWidth = 0;
+            for (int i = 0; i < utfText.charCount() && currentWidth < availWidth; i++) {
+                const CxUTFCharacter *ch = utfText.at(i);
+                if (ch != NULL && currentWidth + ch->displayWidth() <= availWidth) {
+                    truncated.append(*ch);
+                    currentWidth += ch->displayWidth();
+                } else {
+                    break;
+                }
+            }
+            result = CxString("$") + truncated.toBytes();
+            // Pad with spaces if truncation left room
+            for (int i = currentWidth; i < availWidth; i++) {
+                result = result + " ";
+            }
+        } else {
+            int padding = availWidth - displayLen;
+
+            if (alignment == "center") {
+                // Center number in remaining space
+                int leftPad = padding / 2;
+                int rightPad = padding - leftPad;
+                result = CxString("$");
+                for (int i = 0; i < leftPad; i++) {
+                    result = result + " ";
+                }
+                result = result + rawText;
+                for (int i = 0; i < rightPad; i++) {
+                    result = result + " ";
+                }
+            } else if (alignment == "right") {
+                // $ on left, spaces, then number on right
+                result = CxString("$");
+                for (int i = 0; i < padding; i++) {
+                    result = result + " ";
+                }
+                result = result + rawText;
+            } else {
+                // Left-align: $ then number then padding
+                result = CxString("$") + rawText;
+                for (int i = 0; i < padding; i++) {
+                    result = result + " ";
+                }
+            }
+        }
+    } else if (displayLen >= width) {
         // Truncate by characters (not bytes) to fit width
         CxUTFString truncated;
         int currentWidth = 0;

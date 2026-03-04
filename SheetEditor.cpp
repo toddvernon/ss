@@ -248,21 +248,11 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
 
     switch (action) {
         //-------------------------------------------------------------------------------------
-        // ESC key - cancel selection if active, otherwise enter command mode
+        // ESC key - enter command mode (range selection stays active for commands)
         //-------------------------------------------------------------------------------------
         case CxKeyAction::COMMAND:
         {
-            if (_rangeSelectActive) {
-                // Cancel range selection
-                _rangeSelectActive = 0;
-                sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-                sheetView->updateScreen();
-                sheetView->updateStatusLine();
-                resetPrompt();
-            } else {
-                // Enter command mode
-                enterCommandLineMode();
-            }
+            enterCommandLineMode();
         }
         break;
 
@@ -783,7 +773,8 @@ SheetEditor::cancelCommandInput(void)
 // SheetEditor::updateCommandDisplay
 //
 // Update the command line to show current input and matches.
-// Cursor is positioned after the typed text, not after the hints.
+// Shows category prefixes when input is empty, then collapses sub-categories
+// (like format-align-) until narrowed down. Cursor positioned after typed text.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::updateCommandDisplay(void)
@@ -791,22 +782,112 @@ SheetEditor::updateCommandDisplay(void)
     CxString prefix = "command> ";
     CxString display = prefix + _cmdBuffer;
 
-    // Show matches - use buffer array for findMatches
-    CxString matchNames[10];
-    int matchCount = _commandCompleter.findMatches(_cmdBuffer, matchNames, 10);
+    // Get all matches
+    CxString matchNames[32];
+    int matchCount = _activeCompleter->findMatches(_cmdBuffer, matchNames, 32);
 
     // Don't show hints if exact match
     int isExactMatch = (matchCount == 1 && _cmdBuffer == matchNames[0]);
 
     if (matchCount > 0 && !isExactMatch) {
         display = display + "  ";
-        for (int i = 0; i < matchCount && i < 5; i++) {
-            display = display + "| ";
-            display = display + matchNames[i];
-            display = display + " ";
-        }
-        if (matchCount > 5) {
-            display = display + "...";
+
+        if (_cmdBuffer.length() == 0) {
+            // Empty input: show category prefixes (file-, edit-, format-, etc.)
+            CxString categories[16];
+            int categoryCount = 0;
+
+            for (int i = 0; i < matchCount; i++) {
+                CxString name = matchNames[i];
+                int dashIdx = name.index("-");
+                CxString cat;
+                if (dashIdx > 0) {
+                    cat = name.subString(0, dashIdx + 1);
+                } else {
+                    cat = name;
+                }
+
+                // Add unique categories
+                int found = 0;
+                for (int j = 0; j < categoryCount; j++) {
+                    if (categories[j] == cat) {
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!found && categoryCount < 16) {
+                    categories[categoryCount++] = cat;
+                }
+            }
+
+            for (int i = 0; i < categoryCount; i++) {
+                display = display + "| ";
+                display = display + categories[i];
+                display = display + " ";
+            }
+        } else {
+            // Has input: show suffixes after the last completed segment (last dash)
+            // This way "format-c" strips "format-" to show "col- | cell-"
+            // And "format-cell-number-" strips all of it to show "currency | decimal | ..."
+
+            // Find last dash in user input - that's our confirmed prefix boundary
+            int lastDash = -1;
+            for (int j = _cmdBuffer.length() - 1; j >= 0; j--) {
+                if (_cmdBuffer.data()[j] == '-') {
+                    lastDash = j;
+                    break;
+                }
+            }
+            int stripLen = (lastDash >= 0) ? lastDash + 1 : 0;
+
+            CxString displayItems[16];
+            int displayCount = 0;
+
+            for (int i = 0; i < matchCount && displayCount < 16; i++) {
+                CxString name = matchNames[i];
+
+                // Get the suffix (part after the confirmed prefix)
+                CxString suffix = name.subString(stripLen, name.length() - stripLen);
+
+                // Find first dash in suffix to detect sub-category
+                int nextDash = -1;
+                for (int j = 0; j < (int)suffix.length(); j++) {
+                    if (suffix.data()[j] == '-') {
+                        nextDash = j;
+                        break;
+                    }
+                }
+
+                CxString displayName;
+                if (nextDash > 0) {
+                    // Has sub-category in suffix - show up to and including dash
+                    displayName = suffix.subString(0, nextDash + 1);
+                } else {
+                    // No sub-category - show full suffix
+                    displayName = suffix;
+                }
+
+                // Add unique display items
+                int found = 0;
+                for (int j = 0; j < displayCount; j++) {
+                    if (displayItems[j] == displayName) {
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!found) {
+                    displayItems[displayCount++] = displayName;
+                }
+            }
+
+            for (int i = 0; i < displayCount && i < 8; i++) {
+                display = display + "| ";
+                display = display + displayItems[i];
+                display = display + " ";
+            }
+            if (displayCount > 8) {
+                display = display + "...";
+            }
         }
     }
 
@@ -1236,13 +1317,13 @@ SheetEditor::CMD_InsertSymbol(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::CMD_FormatWidth
+// SheetEditor::CMD_FormatColWidth
 //
 // Adjust column width by a relative amount (+n or -n).
 // Example: "format-width +5" increases width by 5, "format-width -3" decreases by 3.
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::CMD_FormatWidth(CxString commandLine)
+SheetEditor::CMD_FormatColWidth(CxString commandLine)
 {
     CxString widthStr = commandLine;
     widthStr.stripLeading(" \t");
@@ -1278,12 +1359,12 @@ SheetEditor::CMD_FormatWidth(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::CMD_FormatWidthAuto
+// SheetEditor::CMD_FormatColFit
 //
 // Auto-fit the column width of the current column (or all columns in selection) to content.
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::CMD_FormatWidthAuto(CxString commandLine)
+SheetEditor::CMD_FormatColFit(CxString commandLine)
 {
     (void)commandLine;  // unused
 
@@ -2337,12 +2418,12 @@ SheetEditor::CMD_Clear(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::CMD_FormatAlignLeft
+// SheetEditor::CMD_FormatCellAlignLeft
 //
 // Set left alignment on the current selection (or current cell if no selection).
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::CMD_FormatAlignLeft(CxString commandLine)
+SheetEditor::CMD_FormatCellAlignLeft(CxString commandLine)
 {
     (void)commandLine;  // unused
 
@@ -2414,12 +2495,12 @@ SheetEditor::CMD_FormatAlignLeft(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::CMD_FormatAlignCenter
+// SheetEditor::CMD_FormatCellAlignCenter
 //
 // Set center alignment on the current selection (or current cell if no selection).
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::CMD_FormatAlignCenter(CxString commandLine)
+SheetEditor::CMD_FormatCellAlignCenter(CxString commandLine)
 {
     (void)commandLine;  // unused
 
@@ -2491,12 +2572,12 @@ SheetEditor::CMD_FormatAlignCenter(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::CMD_FormatAlignRight
+// SheetEditor::CMD_FormatCellAlignRight
 //
 // Set right alignment on the current selection (or current cell if no selection).
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::CMD_FormatAlignRight(CxString commandLine)
+SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
 {
     (void)commandLine;  // unused
 
@@ -2562,6 +2643,318 @@ SheetEditor::CMD_FormatAlignRight(CxString commandLine)
     } else {
         char buf[64];
         snprintf(buf, sizeof(buf), "(%d cells right-aligned)", cellCount);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellNumberCurrency
+//
+// Toggle currency format on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellNumberCurrency(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    int cellCount = 0;
+    int newState = -1;  // -1 means not determined yet
+
+    // Toggle currency attribute
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("currency", true);
+                if (!newCell.hasAppAttribute("decimalPlaces")) {
+                    newCell.setAppAttribute("decimalPlaces", 2);
+                }
+                sheetModel->setCell(coord, newCell);
+                if (newState < 0) newState = 1;
+            } else {
+                bool current = cell->getAppAttributeBool("currency", false);
+                if (newState < 0) newState = current ? 0 : 1;
+                cell->setAppAttribute("currency", newState == 1);
+                if (newState == 1 && !cell->hasAppAttribute("decimalPlaces")) {
+                    cell->setAppAttribute("decimalPlaces", 2);
+                }
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    const char *action = (newState == 1) ? "currency on" : "currency off";
+    if (cellCount == 1) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
+        setMessage(buf);
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellNumberDecimal
+//
+// Set decimal places on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
+{
+    // Parse the argument
+    CxString arg = commandLine.nextToken(" \t");
+    if (arg.length() == 0) {
+        setMessage("Usage: format-decimal <n> (0-10)");
+        return;
+    }
+
+    int places = atoi(arg.data());
+    if (places < 0 || places > 10) {
+        setMessage("Decimal places must be 0-10");
+        return;
+    }
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    int cellCount = 0;
+
+    // Set decimal places
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("decimalPlaces", places);
+                sheetModel->setCell(coord, newCell);
+            } else {
+                cell->setAppAttribute("decimalPlaces", places);
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(1 cell set to %d decimals)", places);
+        setMessage(buf);
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells set to %d decimals)", cellCount, places);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellNumberPercent
+//
+// Toggle percent format on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellNumberPercent(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    int cellCount = 0;
+    int newState = -1;
+
+    // Toggle percent attribute
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("percent", true);
+                sheetModel->setCell(coord, newCell);
+                if (newState < 0) newState = 1;
+            } else {
+                bool current = cell->getAppAttributeBool("percent", false);
+                if (newState < 0) newState = current ? 0 : 1;
+                cell->setAppAttribute("percent", newState == 1);
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    const char *action = (newState == 1) ? "percent on" : "percent off";
+    if (cellCount == 1) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
+        setMessage(buf);
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellNumberThousands
+//
+// Toggle thousands separators on the current selection (or current cell if no selection).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    int cellCount = 0;
+    int newState = -1;
+
+    // Toggle thousands attribute
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("thousands", true);
+                sheetModel->setCell(coord, newCell);
+                if (newState < 0) newState = 1;
+            } else {
+                bool current = cell->getAppAttributeBool("thousands", false);
+                if (newState < 0) newState = current ? 0 : 1;
+                cell->setAppAttribute("thousands", newState == 1);
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    const char *action = (newState == 1) ? "thousands on" : "thousands off";
+    if (cellCount == 1) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
+        setMessage(buf);
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
         setMessage(buf);
     }
 }

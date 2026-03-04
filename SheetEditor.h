@@ -130,15 +130,19 @@ class SheetEditor {
     void CMD_Load(CxString commandLine);
     void CMD_Save(CxString commandLine);
     void CMD_InsertSymbol(CxString commandLine);
-    void CMD_FormatWidth(CxString commandLine);
-    void CMD_FormatWidthAuto(CxString commandLine);
     void CMD_Copy(CxString commandLine);
     void CMD_Cut(CxString commandLine);
     void CMD_Paste(CxString commandLine);
     void CMD_Clear(CxString commandLine);
-    void CMD_FormatAlignLeft(CxString commandLine);
-    void CMD_FormatAlignCenter(CxString commandLine);
-    void CMD_FormatAlignRight(CxString commandLine);
+    void CMD_FormatColWidth(CxString commandLine);
+    void CMD_FormatColFit(CxString commandLine);
+    void CMD_FormatCellAlignLeft(CxString commandLine);
+    void CMD_FormatCellAlignCenter(CxString commandLine);
+    void CMD_FormatCellAlignRight(CxString commandLine);
+    void CMD_FormatCellNumberCurrency(CxString commandLine);
+    void CMD_FormatCellNumberDecimal(CxString commandLine);
+    void CMD_FormatCellNumberPercent(CxString commandLine);
+    void CMD_FormatCellNumberThousands(CxString commandLine);
 
     ProgramMode programMode;
 
