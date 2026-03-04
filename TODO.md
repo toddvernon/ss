@@ -221,14 +221,97 @@ Requires popup UI similar to cm's project window.
 
 ---
 
+## Phase 10: Post-Commit Parsing (Excel-style Input)
+
+**Architectural change:** Switch from strict per-character validation to flexible input with post-commit type inference.
+
+**Current approach (problematic):**
+```
+First char    Mode              Rejects
+─────────────────────────────────────────
+digit/+/-     ENTRY_NUMBER      / and letters
+letter        ENTRY_TEXT        (none)
+$             ENTRY_CURRENCY    letters
+=             ENTRY_FORMULA     (special)
+```
+Result: `10/20/2026` fails because `/` is rejected in number mode.
+
+**New approach (Excel-style):**
+```
+First char    Mode              Accepts
+─────────────────────────────────────────
+=             ENTRY_FORMULA     (unchanged - special)
+anything else ENTRY_GENERAL     all printable chars
+```
+
+At commit time, parse the input to determine type:
+1. Try date patterns → serial double + dateFormat
+2. Try number (with optional $, %, commas) → double + format attrs
+3. Otherwise → text
+
+**Date patterns to recognize:**
+```
+10/20/2026    mm/dd/yyyy
+2026-10-20    yyyy-mm-dd  (ISO)
+10-20-2026    mm-dd-yyyy
+20-Oct-2026   dd-mon-yyyy
+Oct 20, 2026  mon dd, yyyy
+```
+
+**Number patterns (input implies format):**
+```
+Input           Stored    Format attributes
+───────────────────────────────────────────────
+1234.56         1234.56   (none)
+1,234.56        1234.56   thousands=true
+$1234.56        1234.56   currency=true
+$1,234.56       1234.56   currency=true, thousands=true
+50%             0.5       percent=true
+-1,234.56       -1234.56  thousands=true
+```
+
+**Output formatting commands:**
+- `format-cell-date-mdy` - mm/dd/yyyy
+- `format-cell-date-ymd` - yyyy-mm-dd
+- `format-cell-date-dmy` - dd/mm/yyyy
+- `format-cell-date-long` - "October 20, 2026"
+
+**Time support (future):**
+- `TIME(h,m,s)` function (fractional day)
+- `HOUR()`, `MINUTE()`, `SECOND()` extraction
+- Input patterns: `10:30`, `10:30:45`, `10:30 PM`
+
+**JSON storage:**
+```json
+{
+  "cell": "A1",
+  "type": "double",
+  "value": 46318,
+  "format": {
+    "dateFormat": "mm/dd/yyyy"
+  }
+}
+```
+
+**Implementation steps:**
+1. Collapse ENTRY_TEXT/NUMBER/CURRENCY into ENTRY_GENERAL
+2. Accept all printable chars (except = which stays ENTRY_FORMULA)
+3. At commit: parse input with tryParseDate(), tryParseNumber()
+4. Set cell type + format attributes based on parse result
+5. Add date display formatting in SheetView
+6. Add format-cell-date-* commands
+
+---
+
 ## Implementation Order
 
 1. ✓ Range selection in EDIT mode
 2. ✓ Column width (format-col-width, format-col-fit)
 3. ✓ Copy/paste with reference adjustment (Ctrl-K, Ctrl-Y)
-4. Fill operations (Ctrl-D, Ctrl-R)
-5. Freeze panes
-6. ✓ Number formatting (format-cell-number-*)
-7. ✓ Alignment (format-cell-align-*)
-8. Colors (requires popup UI)
+4. ✓ Number formatting (format-cell-number-*)
+5. ✓ Alignment (format-cell-align-*)
+6. **Post-commit parsing (Phase 10)** ← NEXT PRIORITY
+7. Fill operations (Ctrl-D, Ctrl-R)
+8. Freeze panes
 9. Row/column hide/show/insert/delete
+10. Colors (requires popup UI)
