@@ -1631,102 +1631,28 @@ SheetEditor::commitDataEntry(void)
         sheetModel->setCell(pos, cell);
     }
     else if (_dataEntryMode == ENTRY_GENERAL) {
-        // Post-commit parsing: try date, then number, then text
-        double value;
-        int hasCurrency, hasPercent, hasThousands;
-        double serialDate;
-        CxString dateFormat;
-        CxString errorMsg;
+        // Post-commit parsing via sheetModel library
+        CxSheetInputParseResult result = CxSheetInputParser::parseAndClassify(bufferText);
 
-        // Check if input looks like an intentional date (has / or - between numbers)
-        int looksLikeDate = 0;
-        {
-            const char *p = bufferText.data();
-            int len = bufferText.length();
-            for (int i = 0; i < len; i++) {
-                if ((p[i] == '/' || p[i] == '-') && i > 0 && i < len - 1) {
-                    // Has a separator in the middle
-                    looksLikeDate = 1;
-                    break;
-                }
-            }
-        }
-
-        // Check if input looks like an intentional number
-        // (starts with $, ends with %, or contains only numeric characters)
-        int looksLikeCurrency = (bufferText.length() > 0 && bufferText.data()[0] == '$');
-        int looksLikePercent = (bufferText.length() > 0 &&
-                                bufferText.data()[bufferText.length() - 1] == '%');
-        int looksLikeNumber = 0;
-        if (!looksLikeDate) {
-            // Check if all characters are numeric (digits, ., ,, +, -, $, %, space)
-            const char *p = bufferText.data();
-            int len = bufferText.length();
-            int hasDigit = 0;
-            looksLikeNumber = 1;
-            for (int i = 0; i < len; i++) {
-                char c = p[i];
-                if (c >= '0' && c <= '9') {
-                    hasDigit = 1;
-                } else if (c != '.' && c != ',' && c != '+' && c != '-' &&
-                           c != '$' && c != '%' && c != ' ') {
-                    // Has a non-numeric character - it's text
-                    looksLikeNumber = 0;
-                    break;
-                }
-            }
-            // Must have at least one digit to look like a number
-            if (!hasDigit) {
-                looksLikeNumber = 0;
-            }
-        }
-
-        if (CxSheetInputParser::tryParseDate(bufferText, &serialDate, &dateFormat, &errorMsg)) {
-            // Parsed as date
-            cell.setDouble(CxDouble(serialDate));
-            sheetModel->setCell(pos, cell);
-
-            // Set date format attribute
-            CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
-            if (cellPtr) {
-                cellPtr->setAppAttribute("dateFormat", dateFormat.data());
-            }
-        }
-        else if (looksLikeDate) {
-            // User intended a date but parsing failed - show error, don't commit
-            setMessage(CxString("Date error: ") + errorMsg);
+        if (!result.success) {
+            setMessage(CxString("Input error: ") + result.errorMsg);
             return;
         }
-        else if (CxSheetInputParser::tryParseNumber(bufferText, &value,
-                                                     &hasCurrency, &hasPercent, &hasThousands,
-                                                     &errorMsg)) {
-            // Parsed as number with optional formatting
-            cell.setDouble(CxDouble(value));
-            sheetModel->setCell(pos, cell);
 
-            // Set format attributes based on input
-            CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
-            if (cellPtr) {
-                if (hasCurrency) {
-                    cellPtr->setAppAttribute("currency", "true");
-                }
-                if (hasPercent) {
-                    cellPtr->setAppAttribute("percent", "true");
-                }
-                if (hasThousands) {
-                    cellPtr->setAppAttribute("thousands", "true");
-                }
-            }
+        // Set cell value based on parsed type
+        if (result.cellType == 2) {  // DOUBLE
+            cell.setDouble(CxDouble(result.doubleValue));
+        } else if (result.cellType == 1) {  // TEXT
+            cell.setText(result.textValue);
         }
-        else if (looksLikeCurrency || looksLikePercent || looksLikeNumber) {
-            // User intended a number but parsing failed - show error, don't commit
-            setMessage(CxString("Number error: ") + errorMsg);
-            return;
-        }
-        else {
-            // Fall back to text (plain text input is always valid)
-            cell.setText(bufferText);
-            sheetModel->setCell(pos, cell);
+        // cellType == 0 (EMPTY) leaves cell as default empty
+
+        sheetModel->setCell(pos, cell);
+
+        // Apply format attributes (dateFormat, currency, percent, thousands)
+        CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
+        if (cellPtr) {
+            CxSheetInputParser::applyParsingAttributes(cellPtr, result);
         }
     }
 
