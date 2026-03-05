@@ -317,6 +317,14 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 
     // Format cell content using per-column width
     int colWidth = getColumnWidth(dataCol);
+    int screenWidth = screen->cols();
+
+    // Clip to available screen width to prevent wrapping onto next line
+    int availableWidth = screenWidth - screenCol;
+    if (availableWidth < colWidth) {
+        colWidth = availableWidth;
+    }
+
     CxString content = formatCellValue(cell, colWidth);
 
     // Draw with appropriate colors based on highlight type
