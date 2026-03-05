@@ -123,6 +123,12 @@ class SheetView {
     void saveColumnWidthsToAppData(CxJSONUTFObject* appData);
     // save column widths to app data (before sheet save)
 
+    void shiftColumnWidths(int col, int direction);
+    // shift column widths for insert (+1) or delete (-1) column operations
+
+    void updateVisibleTextmapCells(void);
+    // redraw visible cells that have textmap rules (display-layer dependencies)
+
   private:
 
     CxScreen *screen;
@@ -187,6 +193,9 @@ class SheetView {
 
     CxString formatSymbolFill(CxString symbolType, int width);
     // format symbol fill cells (box drawing)
+
+    CxString evaluateTextmapRule(CxString ruleStr);
+    // evaluate a textmap rule string and return the matched text label
 };
 
 

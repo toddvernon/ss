@@ -1387,6 +1387,9 @@ SheetEditor::deduceEntryModeFromChar(char c)
     if (c == '=') {
         return ENTRY_FORMULA;
     }
+    if (c == '@') {
+        return ENTRY_TEXTMAP;
+    }
     // All other printable characters use general mode
     if (c >= 32 && c < 127) {
         return ENTRY_GENERAL;
@@ -1407,6 +1410,7 @@ SheetEditor::isValidInputChar(char c, DataEntryMode mode)
     switch (mode) {
         case ENTRY_GENERAL:
         case ENTRY_FORMULA:
+        case ENTRY_TEXTMAP:
             // Accept any printable character
             return (c >= 32 && c < 127);
 
@@ -1426,7 +1430,16 @@ SheetEditor::isValidInputChar(char c, DataEntryMode mode)
 CxString
 SheetEditor::getCellDisplayText(CxSheetCell *cell)
 {
-    if (cell == NULL || cell->getType() == CxSheetCell::EMPTY) {
+    if (cell == NULL) {
+        return "";
+    }
+
+    // Textmap cells are EMPTY type with a textmap appAttribute
+    if (cell->hasAppAttribute("textmap")) {
+        return CxString("@") + cell->getAppAttributeString("textmap");
+    }
+
+    if (cell->getType() == CxSheetCell::EMPTY) {
         return "";
     }
 
@@ -1484,6 +1497,17 @@ SheetEditor::editCurrentCell(void)
     // Symbol fill cells cannot be edited - ignore Enter key
     // User can type to replace, or use insert-symbol to change type
     if (cell != NULL && cell->hasAppAttribute("symbolFill")) {
+        return;
+    }
+
+    // Textmap cells - enter textmap mode with @rule pre-filled
+    if (cell != NULL && cell->hasAppAttribute("textmap")) {
+        programMode = DATA_ENTRY;
+        _dataEntryMode = ENTRY_TEXTMAP;
+        CxString ruleText = CxString("@") + cell->getAppAttributeString("textmap");
+        _dataEntryBuffer.fromCxString(ruleText, 8);
+        _dataEntryCursorPos = _dataEntryBuffer.charCount();
+        updateDataEntryDisplay();
         return;
     }
 
@@ -1621,7 +1645,17 @@ SheetEditor::commitDataEntry(void)
     // Convert UTF buffer to bytes for cell storage
     CxString bufferText = _dataEntryBuffer.toBytes();
 
-    if (_dataEntryMode == ENTRY_FORMULA) {
+    if (_dataEntryMode == ENTRY_TEXTMAP) {
+        // Textmap mode - strip leading '@' and store as appAttribute on EMPTY cell
+        CxString ruleText = bufferText;
+        if (ruleText.length() > 0 && ruleText.data()[0] == '@') {
+            ruleText = ruleText.subString(1, ruleText.length() - 1);
+        }
+        // Cell stays EMPTY; the textmap rule is a display-layer attribute
+        cell.setAppAttribute("textmap", ruleText.data());
+        sheetModel->setCell(pos, cell);
+    }
+    else if (_dataEntryMode == ENTRY_FORMULA) {
         // Formula mode - strip leading '=' and parse as formula
         CxString formulaText = bufferText;
         if (formulaText.length() > 0 && formulaText.data()[0] == '=') {
@@ -1664,10 +1698,15 @@ SheetEditor::commitDataEntry(void)
     // Move cursor down to next row (standard spreadsheet behavior)
     sheetModel->cursorDownRequest();
 
-    // Optimized refresh - only redraw affected cells plus the new cursor position
+    // Optimized refresh - redraw affected cells plus the new cursor position
     CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
-    affected.append(sheetModel->getCurrentPosition());  // add new cursor location
+    affected.append(sheetModel->getCurrentPosition());
     sheetView->updateCells(affected);
+
+    // Textmap cells depend on other cells but aren't in sheetModel's dependency
+    // graph, so redraw any visible textmap cells after data changes
+    sheetView->updateVisibleTextmapCells();
+
     resetPrompt();
 }
 
@@ -1708,6 +1747,10 @@ SheetEditor::updateDataEntryDisplay(void)
         case ENTRY_FORMULA:
             display = CxString("formula: ") + bufferBytes;
             prefixLen = 9;  // "formula: "
+            break;
+        case ENTRY_TEXTMAP:
+            display = CxString("textmap: ") + bufferBytes;
+            prefixLen = 9;  // "textmap: "
             break;
         default:
             display = bufferBytes;
@@ -2919,4 +2962,84 @@ SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
         snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
         setMessage(buf);
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_InsertRow
+//
+// Insert an empty row above the current cursor position.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_InsertRow(CxString commandLine)
+{
+    (void)commandLine;
+
+    int row = sheetModel->getCurrentPosition().getRow();
+    sheetModel->insertRow(row);
+
+    sheetView->updateScreen();
+    setMessage("Row inserted");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_InsertColumn
+//
+// Insert an empty column before the current cursor position.
+// Also shifts column widths to keep visual formatting consistent.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_InsertColumn(CxString commandLine)
+{
+    (void)commandLine;
+
+    int col = sheetModel->getCurrentPosition().getCol();
+    sheetModel->insertColumn(col);
+
+    // Shift column widths to match the data shift
+    sheetView->shiftColumnWidths(col, 1);
+
+    sheetView->updateScreen();
+    setMessage("Column inserted");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_DeleteRow
+//
+// Delete the current row.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_DeleteRow(CxString commandLine)
+{
+    (void)commandLine;
+
+    int row = sheetModel->getCurrentPosition().getRow();
+    sheetModel->deleteRow(row);
+
+    sheetView->updateScreen();
+    setMessage("Row deleted");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_DeleteColumn
+//
+// Delete the current column.
+// Also shifts column widths to keep visual formatting consistent.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_DeleteColumn(CxString commandLine)
+{
+    (void)commandLine;
+
+    int col = sheetModel->getCurrentPosition().getCol();
+    sheetModel->deleteColumn(col);
+
+    // Shift column widths to match the data shift
+    sheetView->shiftColumnWidths(col, -1);
+
+    sheetView->updateScreen();
+    setMessage("Column deleted");
 }

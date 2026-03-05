@@ -153,6 +153,48 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::updateVisibleTextmapCells
+//
+// Scan visible cells for textmap appAttributes and redraw them. Textmap cells
+// depend on other cells for their display text but aren't in sheetModel's
+// dependency graph, so they need explicit redrawing after data changes.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateVisibleTextmapCells(void)
+{
+    int visRows = visibleDataRows();
+    int screenWidth = screen->cols();
+    int redrew = 0;
+
+    for (int r = 0; r < visRows; r++) {
+        int dataRow = _scrollRowOffset + r;
+        int screenX = _rowHeaderWidth;
+
+        for (int c = _scrollColOffset; screenX < screenWidth; c++) {
+            int colWidth = getColumnWidth(c);
+            int screenCol = screenX;
+            screenX += colWidth;
+
+            CxSheetCell cell = sheetModel->getCell(CxSheetCellCoordinate(dataRow, c));
+            if (cell.appAttributes != NULL) {
+                CxString textmap = cell.getAppAttributeString("textmap");
+                if (textmap.length() > 0) {
+                    int screenRow = _startRow + _colHeaderHeight + r;
+                    HighlightType ht = getHighlightTypeForCell(dataRow, c);
+                    drawCell(screenRow, screenCol, dataRow, c, ht);
+                    redrew = 1;
+                }
+            }
+        }
+    }
+
+    if (redrew) {
+        fflush(stdout);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::updateCursorMove
 //
 // Optimized update for cursor movement. Checks if scrolling is needed and does a
@@ -486,6 +528,46 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
     if (cell->hasAppAttribute("symbolFill")) {
         CxString symbolType = cell->getAppAttributeString("symbolFill");
         return formatSymbolFill(symbolType, width);
+    }
+
+    // Check for textmap cells (display-layer feature)
+    if (cell->hasAppAttribute("textmap")) {
+        CxString ruleStr = cell->getAppAttributeString("textmap");
+        CxString rawText = evaluateTextmapRule(ruleStr);
+        if (rawText.length() == 0) {
+            // No match - fill with spaces
+            for (int i = 0; i < width; i++) {
+                result = result + " ";
+            }
+            return result;
+        }
+        // Left-align the textmap result
+        CxUTFString utfText;
+        utfText.fromCxString(rawText, 8);
+        int displayLen = utfText.displayWidth();
+        if (displayLen >= width) {
+            CxUTFString truncated;
+            int currentWidth = 0;
+            for (int i = 0; i < utfText.charCount() && currentWidth < width; i++) {
+                const CxUTFCharacter *ch = utfText.at(i);
+                if (ch != NULL && currentWidth + ch->displayWidth() <= width) {
+                    truncated.append(*ch);
+                    currentWidth += ch->displayWidth();
+                } else {
+                    break;
+                }
+            }
+            result = truncated.toBytes();
+            for (int i = currentWidth; i < width; i++) {
+                result = result + " ";
+            }
+        } else {
+            result = rawText;
+            for (int i = displayLen; i < width; i++) {
+                result = result + " ";
+            }
+        }
+        return result;
     }
 
     CxString rawText;
@@ -1511,4 +1593,190 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
     // Add the new columns object
     CxJSONUTFMember *columnsMember = new CxJSONUTFMember("columns", columns);
     appData->append(columnsMember);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::evaluateTextmapRule
+//
+// Evaluate a textmap rule string and return the matched text label.
+// Rule format: "Q4=1: Too Early; Q4<1.3: On Track; Healthy"
+//   - Semicolons separate rules
+//   - Each rule: <cellRef><op><value>: <label>
+//   - Operators: =, <, >, <=, >=, !=
+//   - Last entry without ':' is the default label
+//   - Returns the first matching label, or default, or empty string
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::evaluateTextmapRule(CxString ruleStr)
+{
+    CxString defaultLabel;
+    int hasDefault = 0;
+
+    // Split on ';' to get individual rules
+    const char *p = ruleStr.data();
+    int len = ruleStr.length();
+    int ruleStart = 0;
+
+    for (int pos = 0; pos <= len; pos++) {
+        // At end of string or semicolon, we have a rule
+        if (pos == len || p[pos] == ';') {
+            // Extract the rule substring
+            CxString rule = ruleStr.subString(ruleStart, pos - ruleStart);
+
+            // Trim whitespace
+            rule.stripLeading(" \t");
+            rule.stripTrailing(" \t");
+
+            if (rule.length() == 0) {
+                ruleStart = pos + 1;
+                continue;
+            }
+
+            // Check if this rule has a ':' (condition: label)
+            int colonPos = -1;
+            for (int j = 0; j < (int)rule.length(); j++) {
+                if (rule.data()[j] == ':') {
+                    colonPos = j;
+                    break;
+                }
+            }
+
+            if (colonPos < 0) {
+                // No colon - this is the default label
+                defaultLabel = rule;
+                hasDefault = 1;
+                ruleStart = pos + 1;
+                continue;
+            }
+
+            // Split on first ':' into condition and label
+            CxString condition = rule.subString(0, colonPos);
+            CxString label = rule.subString(colonPos + 1, rule.length() - colonPos - 1);
+            condition.stripLeading(" \t");
+            condition.stripTrailing(" \t");
+            label.stripLeading(" \t");
+            label.stripTrailing(" \t");
+
+            // Parse condition: cellRef operator value
+            // Find where letters+digits of cell ref end and operator begins
+            const char *cp = condition.data();
+            int clen = condition.length();
+            int opStart = -1;
+
+            // Cell ref is letters followed by digits (with optional $)
+            int i = 0;
+            // Skip optional $
+            if (i < clen && cp[i] == '$') i++;
+            // Skip letters
+            while (i < clen && ((cp[i] >= 'A' && cp[i] <= 'Z') || (cp[i] >= 'a' && cp[i] <= 'z'))) i++;
+            // Skip optional $
+            if (i < clen && cp[i] == '$') i++;
+            // Skip digits
+            while (i < clen && cp[i] >= '0' && cp[i] <= '9') i++;
+            opStart = i;
+
+            if (opStart <= 0 || opStart >= clen) {
+                ruleStart = pos + 1;
+                continue;  // malformed condition
+            }
+
+            CxString cellRef = condition.subString(0, opStart);
+
+            // Parse operator (=, <, >, <=, >=, !=)
+            CxString op;
+            int valStart = opStart;
+            if (valStart < clen - 1 && (cp[valStart] == '<' || cp[valStart] == '>' || cp[valStart] == '!') && cp[valStart + 1] == '=') {
+                op = condition.subString(valStart, 2);
+                valStart += 2;
+            } else if (valStart < clen && (cp[valStart] == '=' || cp[valStart] == '<' || cp[valStart] == '>')) {
+                op = condition.subString(valStart, 1);
+                valStart += 1;
+            } else {
+                ruleStart = pos + 1;
+                continue;  // no operator found
+            }
+
+            // Parse the comparison value
+            CxString valStr = condition.subString(valStart, clen - valStart);
+            valStr.stripLeading(" \t");
+            double compareValue = atof(valStr.data());
+
+            // Look up the referenced cell value
+            CxSheetCellCoordinate refCoord;
+            if (!refCoord.parseAddress(cellRef)) {
+                ruleStart = pos + 1;
+                continue;  // invalid cell ref
+            }
+
+            CxSheetCell *refCell = sheetModel->getCellPtr(refCoord);
+            double cellValue = 0.0;
+            if (refCell != NULL) {
+                if (refCell->getType() == CxSheetCell::DOUBLE) {
+                    cellValue = refCell->getDouble().value;
+                } else if (refCell->getType() == CxSheetCell::FORMULA) {
+                    cellValue = refCell->getEvaluatedValue().value;
+                }
+            }
+
+            // Evaluate the condition
+            int matched = 0;
+            if (op == "=") {
+                matched = (cellValue == compareValue);
+            } else if (op == "<") {
+                matched = (cellValue < compareValue);
+            } else if (op == ">") {
+                matched = (cellValue > compareValue);
+            } else if (op == "<=") {
+                matched = (cellValue <= compareValue);
+            } else if (op == ">=") {
+                matched = (cellValue >= compareValue);
+            } else if (op == "!=") {
+                matched = (cellValue != compareValue);
+            }
+
+            if (matched) {
+                return label;
+            }
+
+            ruleStart = pos + 1;
+        }
+    }
+
+    // No condition matched - return default if available
+    if (hasDefault) {
+        return defaultLabel;
+    }
+
+    return "";
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::shiftColumnWidths
+//
+// Shift column widths for insert (+1) or delete (-1) column operations.
+// For insert: widths from col onward shift right, new column gets default (0).
+// For delete: widths from col onward shift left, last column gets default (0).
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::shiftColumnWidths(int col, int direction)
+{
+    if (col < 0 || col >= MAX_COLUMNS) {
+        return;
+    }
+
+    if (direction > 0) {
+        // Insert: shift right from end to col
+        for (int i = MAX_COLUMNS - 1; i > col; i--) {
+            _colWidths[i] = _colWidths[i - 1];
+        }
+        _colWidths[col] = 0;  // new column gets default width
+    } else if (direction < 0) {
+        // Delete: shift left from col to end
+        for (int i = col; i < MAX_COLUMNS - 1; i++) {
+            _colWidths[i] = _colWidths[i + 1];
+        }
+        _colWidths[MAX_COLUMNS - 1] = 0;
+    }
 }

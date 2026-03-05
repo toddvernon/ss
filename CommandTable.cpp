@@ -148,6 +148,35 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_InsertSymbol,
       NULL },
 
+    { "insert-row-before",
+      NULL,
+      "Insert row before cursor",
+      0,
+      &SheetEditor::CMD_InsertRow,
+      NULL },
+
+    { "insert-column-before",
+      NULL,
+      "Insert column before cursor",
+      0,
+      &SheetEditor::CMD_InsertColumn,
+      NULL },
+
+    //--- delete- -------------------------------------------------------------
+    { "delete-row",
+      NULL,
+      "Delete current row",
+      0,
+      &SheetEditor::CMD_DeleteRow,
+      NULL },
+
+    { "delete-column",
+      NULL,
+      "Delete current column",
+      0,
+      &SheetEditor::CMD_DeleteColumn,
+      NULL },
+
     //--- end -----------------------------------------------------------------
     { NULL, NULL, NULL, 0, NULL, NULL }
 };

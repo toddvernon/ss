@@ -76,7 +76,8 @@ class SheetEditor {
     enum DataEntryMode {
         ENTRY_NONE,             // not in data entry
         ENTRY_GENERAL,          // general input - parsed at commit time
-        ENTRY_FORMULA           // entering formula (started with =)
+        ENTRY_FORMULA,          // entering formula (started with =)
+        ENTRY_TEXTMAP           // entering textmap rule (started with @)
     };
 
 
@@ -141,6 +142,10 @@ class SheetEditor {
     void CMD_FormatCellNumberDecimal(CxString commandLine);
     void CMD_FormatCellNumberPercent(CxString commandLine);
     void CMD_FormatCellNumberThousands(CxString commandLine);
+    void CMD_InsertRow(CxString commandLine);
+    void CMD_InsertColumn(CxString commandLine);
+    void CMD_DeleteRow(CxString commandLine);
+    void CMD_DeleteColumn(CxString commandLine);
 
     ProgramMode programMode;
 
