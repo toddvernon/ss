@@ -57,11 +57,15 @@ class CommandLineView {
     void placeCursorAt(int col);
     // place cursor at a specific column offset
 
+    void setDimMode(int dim);
+    // set dim mode (1 = dark gray for browsing, 0 = white for editing)
+
   private:
 
     CxScreen *_screen;
     SpreadsheetDefaults *_defaults;
     int _screenRow;
+    int _dimMode;
     CxUTFString _text;
 };
 

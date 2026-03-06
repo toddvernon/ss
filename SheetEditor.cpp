@@ -892,6 +892,7 @@ SheetEditor::updateCommandDisplay(void)
         }
     }
 
+    commandLineView->setDimMode(0);
     commandLineView->setText(display);
     commandLineView->updateScreen();
 
@@ -939,6 +940,7 @@ SheetEditor::updateArgumentDisplay(void)
         }
     }
 
+    commandLineView->setDimMode(0);
     commandLineView->setText(display);
     commandLineView->updateScreen();
 
@@ -999,6 +1001,7 @@ SheetEditor::updateCommandLineDisplay(void)
         display = display + " " + cellText;
     }
 
+    commandLineView->setDimMode(1);
     commandLineView->setText(display);
     commandLineView->updateScreen();
 }
@@ -1798,6 +1801,7 @@ SheetEditor::updateDataEntryDisplay(void)
             break;
     }
 
+    commandLineView->setDimMode(0);
     commandLineView->setText(display);
     commandLineView->updateScreen();
     commandLineView->placeCursorAt(prefixLen + _dataEntryCursorPos);
@@ -1979,6 +1983,7 @@ SheetEditor::updateCellHuntDisplay(void)
 
     CxString display = CxString("formula: ") + beforeInsert + ref + afterInsert;
 
+    commandLineView->setDimMode(0);
     commandLineView->setText(display);
     commandLineView->updateScreen();
 
@@ -2993,6 +2998,82 @@ SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
     sheetView->updateScreen();
 
     const char *action = (newState == 1) ? "thousands on" : "thousands off";
+    if (cellCount == 1) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
+        setMessage(buf);
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellTextWide
+//
+// Toggle wide text display on the current selection (or current cell if no selection).
+// Wide text inserts spaces between characters: "FUND IV" displays as "F U N D   I V".
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellTextWide(CxString commandLine)
+{
+    (void)commandLine;  // unused
+
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    int cellCount = 0;
+    int newState = -1;
+
+    // Toggle wideText attribute
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute("wideText", true);
+                sheetModel->setCell(coord, newCell);
+                if (newState < 0) newState = 1;
+            } else {
+                bool current = cell->getAppAttributeBool("wideText", false);
+                if (newState < 0) newState = current ? 0 : 1;
+                cell->setAppAttribute("wideText", newState == 1);
+            }
+            cellCount++;
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    const char *action = (newState == 1) ? "wide text on" : "wide text off";
     if (cellCount == 1) {
         char buf[64];
         snprintf(buf, sizeof(buf), "(1 cell %s)", action);

@@ -54,6 +54,7 @@ int main(int argc, char **argv)
     SheetEditor sheetEditor(screen, keyboard, filePath);
     sheetEditor.run();
 
+    screen->showCursor();
     fflush(stdout);
     CxScreen::clearScreen();
 

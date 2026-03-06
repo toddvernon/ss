@@ -77,11 +77,17 @@ public:
     CxColor *rangeSelectTextColor(void);
     CxColor *rangeSelectBackgroundColor(void);
 
+    // Command line dim/edit colors
+    CxColor *commandLineDimTextColor(void);
+    CxColor *commandLineEditTextColor(void);
+
     // Color helper methods - apply foreground and background in one call
     void applyHeaderColors(CxScreen *screen);
     void applySelectedCellColors(CxScreen *screen);
     void applyCellColors(CxScreen *screen);
     void applyCommandLineColors(CxScreen *screen);
+    void applyCommandLineDimColors(CxScreen *screen);
+    void applyCommandLineEditColors(CxScreen *screen);
     void applyCellHuntColors(CxScreen *screen);
     void applyCellHuntRangeColors(CxScreen *screen);
     void applyRangeSelectColors(CxScreen *screen);
@@ -127,6 +133,10 @@ private:
 
     // Row number color
     CxColor *_rowNumberTextColor;
+
+    // Command line dim/edit colors
+    CxColor *_commandLineDimTextColor;
+    CxColor *_commandLineEditTextColor;
 
     // Cell hunt colors
     CxColor *_cellHuntTextColor;

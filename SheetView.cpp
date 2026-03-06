@@ -816,6 +816,33 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
             return result;
     }
 
+    // Apply wide text spacing for TEXT cells with the wideText attribute
+    // "FUND IV" becomes "F U N D   I V" (spaces between chars, double space for existing spaces)
+    if (cell->getType() == CxSheetCell::TEXT &&
+        cell->getAppAttributeBool("wideText", false)) {
+        CxUTFString utfRaw;
+        utfRaw.fromCxString(rawText, 8);
+        CxString wideResult;
+        for (int i = 0; i < utfRaw.charCount(); i++) {
+            const CxUTFCharacter *ch = utfRaw.at(i);
+            if (ch != NULL) {
+                if (i > 0) {
+                    wideResult = wideResult + " ";
+                }
+                // Append the character bytes
+                const unsigned char *b = ch->bytes();
+                int bc = ch->byteCount();
+                for (int j = 0; j < bc; j++) {
+                    char tmp[2];
+                    tmp[0] = (char)b[j];
+                    tmp[1] = 0;
+                    wideResult = wideResult + tmp;
+                }
+            }
+        }
+        rawText = wideResult;
+    }
+
     // Convert to UTF string for proper character counting
     CxUTFString utfText;
     utfText.fromCxString(rawText, 8);  // 8-space tabs

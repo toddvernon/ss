@@ -48,6 +48,10 @@ SpreadsheetDefaults::SpreadsheetDefaults(void)
     // Row number color
     _rowNumberTextColor = new CxAnsiForegroundColor(CxAnsiForegroundColor::NONE);
 
+    // Command line dim/edit colors - dim for browsing, edit for active input
+    _commandLineDimTextColor = new CxRGBForegroundColor(140, 145, 160);   // medium gray
+    _commandLineEditTextColor = new CxRGBForegroundColor(255, 255, 255);  // white
+
     // Cell hunt colors - default to green for hunt cursor, light green for range
     _cellHuntTextColor       = new CxRGBForegroundColor(255, 255, 255);   // white text
     _cellHuntBackgroundColor = new CxRGBBackgroundColor(60, 150, 60);     // green background
@@ -194,6 +198,12 @@ SpreadsheetDefaults::loadDefaults(CxString fname)
                     // Row number color
                     parseColorFromJSON(colorObject, "rowNumberTextColor",
                                        &_rowNumberTextColor, FALSE);
+
+                    // Command line dim/edit colors
+                    parseColorFromJSON(colorObject, "commandLineDimTextColor",
+                                       &_commandLineDimTextColor, FALSE);
+                    parseColorFromJSON(colorObject, "commandLineEditTextColor",
+                                       &_commandLineEditTextColor, FALSE);
                 }
             }
         }
@@ -364,6 +374,16 @@ CxColor *SpreadsheetDefaults::rowNumberTextColor(void)
     return _rowNumberTextColor;
 }
 
+CxColor *SpreadsheetDefaults::commandLineDimTextColor(void)
+{
+    return _commandLineDimTextColor;
+}
+
+CxColor *SpreadsheetDefaults::commandLineEditTextColor(void)
+{
+    return _commandLineEditTextColor;
+}
+
 CxColor *SpreadsheetDefaults::cellHuntTextColor(void)
 {
     return _cellHuntTextColor;
@@ -423,6 +443,18 @@ void SpreadsheetDefaults::applyCommandLineColors(CxScreen *screen)
     screen->setBackgroundColor(_commandLineBackgroundColor);
 }
 
+void SpreadsheetDefaults::applyCommandLineDimColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_commandLineDimTextColor);
+    screen->resetBackgroundColor();
+}
+
+void SpreadsheetDefaults::applyCommandLineEditColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_commandLineEditTextColor);
+    screen->setBackgroundColor(_commandLineBackgroundColor);
+}
+
 void SpreadsheetDefaults::applyCellHuntColors(CxScreen *screen)
 {
     screen->setForegroundColor(_cellHuntTextColor);
@@ -477,6 +509,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     const char *cellFg       = "ANSI:NONE";
     const char *cellBg       = "ANSI:NONE";
     const char *rowNumFg     = "RGB:100,105,120";
+    const char *cmdLineDimFg  = "RGB:140,145,160";
+    const char *cmdLineEditFg = "RGB:255,255,255";
 #elif defined(_SOLARIS6_) || defined(_SOLARIS10_) || defined(_IRIX6_)
     const char *hdr = "# Uses XTERM 256 color palette for broad terminal compatibility";
     const char *headerFg     = "XTERM256:Grey84";
@@ -490,6 +524,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     const char *cellFg       = "ANSI:NONE";
     const char *cellBg       = "ANSI:NONE";
     const char *rowNumFg     = "XTERM256:Grey42";
+    const char *cmdLineDimFg  = "XTERM256:Grey54";
+    const char *cmdLineEditFg = "XTERM256:White";
 #else
     const char *hdr = "# Uses ANSI 16-color palette for maximum terminal compatibility";
     const char *headerFg     = "ANSI:BRIGHT_WHITE";
@@ -503,6 +539,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     const char *cellFg       = "ANSI:NONE";
     const char *cellBg       = "ANSI:NONE";
     const char *rowNumFg     = "ANSI:BRIGHT_BLACK";
+    const char *cmdLineDimFg  = "ANSI:WHITE";
+    const char *cmdLineEditFg = "ANSI:BRIGHT_WHITE";
 #endif
 
     file.printf("# .ssrc defaults file\n");
@@ -522,7 +560,9 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     file.printf("        \"selectedCellBackgroundColor\": \"%s\",\n", selectedBg);
     file.printf("        \"cellTextColor\": \"%s\",\n", cellFg);
     file.printf("        \"cellBackgroundColor\": \"%s\",\n", cellBg);
-    file.printf("        \"rowNumberTextColor\": \"%s\"\n", rowNumFg);
+    file.printf("        \"rowNumberTextColor\": \"%s\",\n", rowNumFg);
+    file.printf("        \"commandLineDimTextColor\": \"%s\",\n", cmdLineDimFg);
+    file.printf("        \"commandLineEditTextColor\": \"%s\"\n", cmdLineEditFg);
     file.printf("    }\n");
     file.printf("}\n");
 

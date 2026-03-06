@@ -27,6 +27,7 @@ CommandLineView::CommandLineView(CxScreen *screen, SpreadsheetDefaults *defaults
 : _screen(screen)
 , _defaults(defaults)
 , _screenRow(screenRow)
+, _dimMode(1)
 {
     // _text is default-constructed as empty CxUTFString
 }
@@ -64,8 +65,12 @@ CommandLineView::updateScreen(void)
 {
     CxScreen::placeCursor(_screenRow, 0);
 
-    // Use default terminal colors (no color)
-    _screen->resetColors();
+    // Apply colors based on mode: dim (browsing) or bright (editing)
+    if (_dimMode) {
+        _defaults->applyCommandLineDimColors(_screen);
+    } else {
+        _defaults->applyCommandLineEditColors(_screen);
+    }
 
     // Clear the line
     CxScreen::clearScreenFromCursorToEndOfLine();
@@ -76,6 +81,12 @@ CommandLineView::updateScreen(void)
 
     // Reset colors
     _defaults->resetColors(_screen);
+
+    if (_dimMode) {
+        _screen->hideCursor();
+    } else {
+        _screen->showCursor();
+    }
 
     fflush(stdout);
 }
@@ -114,6 +125,18 @@ void
 CommandLineView::placeCursor(void)
 {
     CxScreen::placeCursor(_screenRow, _text.displayWidth());
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// CommandLineView::setDimMode
+//
+// Set dim mode. 1 = dark gray (browsing), 0 = white (editing).
+//-------------------------------------------------------------------------------------------------
+void
+CommandLineView::setDimMode(int dim)
+{
+    _dimMode = dim;
 }
 
 

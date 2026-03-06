@@ -140,6 +140,14 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_FormatCellNumberThousands,
       NULL },
 
+    //--- format-cell-text- (text formatting) ----------------------------------
+    { "format-cell-text-wide",
+      NULL,
+      "Toggle wide text spacing (F U N D)",
+      0,
+      &SheetEditor::CMD_FormatCellTextWide,
+      NULL },
+
     //--- insert- -------------------------------------------------------------
     { "insert-symbol",
       "<type>",
