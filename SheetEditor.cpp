@@ -292,6 +292,20 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         break;
 
         //-------------------------------------------------------------------------------------
+        // Ctrl+Arrow key adjusts column width
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::CTRL_CURSOR:
+        {
+            CxString tag = keyAction.tag();
+            if (tag == "<ctrl-arrow-right>") {
+                adjustColumnWidth(1);
+            } else if (tag == "<ctrl-arrow-left>") {
+                adjustColumnWidth(-1);
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
         // Shift+Arrow key starts/extends range selection
         //-------------------------------------------------------------------------------------
         case CxKeyAction::SHIFT_CURSOR:
