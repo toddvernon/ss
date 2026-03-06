@@ -111,41 +111,46 @@ SheetView::updateScreen(void)
 //-------------------------------------------------------------------------------------------------
 // SheetView::updateCells
 //
-// Redraw only the specified cells. Used for optimized updates after data changes.
-// Only redraws cells that are currently visible on screen.
+// Redraw affected rows for the specified cells. Redraws entire rows to correctly
+// handle text overflow (a cell change may affect overflow from/into neighbors).
 //-------------------------------------------------------------------------------------------------
 void
 SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 {
     int visRows = visibleDataRows();
-    int screenWidth = screen->cols();
+
+    // Collect unique visible rows that need redrawing
+    static const int MAX_ROWS = 128;
+    int affectedRows[MAX_ROWS];
+    int numAffectedRows = 0;
 
     for (int i = 0; i < (int)cells.entries(); i++) {
-        CxSheetCellCoordinate coord = cells.at(i);
-        int dataRow = coord.getRow();
-        int dataCol = coord.getCol();
+        int dataRow = cells.at(i).getRow();
 
         // Check if row is visible
         if (dataRow < _scrollRowOffset || dataRow >= _scrollRowOffset + visRows) {
-            continue;  // row not visible
+            continue;
         }
 
-        // Check if column is visible (must be >= scroll offset)
-        if (dataCol < _scrollColOffset) {
-            continue;  // column not visible (scrolled past)
+        // Check if already in the affected list
+        int found = 0;
+        for (int j = 0; j < numAffectedRows; j++) {
+            if (affectedRows[j] == dataRow) {
+                found = 1;
+                break;
+            }
         }
+        if (!found && numAffectedRows < MAX_ROWS) {
+            affectedRows[numAffectedRows] = dataRow;
+            numAffectedRows++;
+        }
+    }
 
-        // Calculate screen position
+    // Redraw each affected row using overflow-aware drawRow()
+    for (int i = 0; i < numAffectedRows; i++) {
+        int dataRow = affectedRows[i];
         int screenRow = _startRow + _colHeaderHeight + (dataRow - _scrollRowOffset);
-        int screenCol = getColumnScreenX(dataCol);
-
-        // Check if column is visible (on screen)
-        if (screenCol >= screenWidth) {
-            continue;  // column not visible (off right edge)
-        }
-
-        HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCol);
-        drawCell(screenRow, screenCol, dataRow, dataCol, highlightType);
+        drawRow(screenRow, dataRow);
     }
 
     fflush(stdout);
@@ -155,9 +160,10 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 //-------------------------------------------------------------------------------------------------
 // SheetView::updateVisibleTextmapCells
 //
-// Scan visible cells for textmap appAttributes and redraw them. Textmap cells
-// depend on other cells for their display text but aren't in sheetModel's
-// dependency graph, so they need explicit redrawing after data changes.
+// Scan visible cells for textmap appAttributes and redraw their rows.
+// Textmap cells depend on other cells for their display text but aren't in
+// sheetModel's dependency graph, so they need explicit redrawing after data changes.
+// Redraws entire rows to correctly handle text overflow.
 //-------------------------------------------------------------------------------------------------
 void
 SheetView::updateVisibleTextmapCells(void)
@@ -169,22 +175,26 @@ SheetView::updateVisibleTextmapCells(void)
     for (int r = 0; r < visRows; r++) {
         int dataRow = _scrollRowOffset + r;
         int screenX = _rowHeaderWidth;
+        int rowHasTextmap = 0;
 
         for (int c = _scrollColOffset; screenX < screenWidth; c++) {
             int colWidth = getColumnWidth(c);
-            int screenCol = screenX;
             screenX += colWidth;
 
             CxSheetCell cell = sheetModel->getCell(CxSheetCellCoordinate(dataRow, c));
             if (cell.appAttributes != NULL) {
                 CxString textmap = cell.getAppAttributeString("textmap");
                 if (textmap.length() > 0) {
-                    int screenRow = _startRow + _colHeaderHeight + r;
-                    HighlightType ht = getHighlightTypeForCell(dataRow, c);
-                    drawCell(screenRow, screenCol, dataRow, c, ht);
-                    redrew = 1;
+                    rowHasTextmap = 1;
+                    break;
                 }
             }
+        }
+
+        if (rowHasTextmap) {
+            int screenRow = _startRow + _colHeaderHeight + r;
+            drawRow(screenRow, dataRow);
+            redrew = 1;
         }
     }
 
@@ -316,27 +326,203 @@ SheetView::drawRowNumbers(void)
 //-------------------------------------------------------------------------------------------------
 // SheetView::drawCells
 //
-// Draw all visible cells.
+// Draw all visible cells with text overflow support via drawRow().
 //-------------------------------------------------------------------------------------------------
 void
 SheetView::drawCells(void)
 {
     int numRows = visibleDataRows();
-    int screenWidth = screen->cols();
 
     for (int r = 0; r < numRows; r++) {
         int screenRow = _startRow + _colHeaderHeight + r;
         int dataRow = r + _scrollRowOffset;
+        drawRow(screenRow, dataRow);
+    }
+}
 
-        // Draw columns until we run out of screen width
-        int screenCol = _rowHeaderWidth;
-        for (int dataCol = _scrollColOffset; screenCol < screenWidth; dataCol++) {
-            int colWidth = getColumnWidth(dataCol);
 
-            HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCol);
-            drawCell(screenRow, screenCol, dataRow, dataCol, highlightType);
+//-------------------------------------------------------------------------------------------------
+// SheetView::drawRow
+//
+// Draw a single row of visible cells with text overflow support.
+//
+// Two-pass approach:
+// Pass 1 (left-to-right): Left-aligned text cells claim rightward overflow into
+//   unoccupied, unhighlighted neighbor cells.
+// Pass 2 (right-to-left): Right-aligned text cells claim leftward overflow into
+//   unclaimed, unoccupied, unhighlighted neighbor cells.
+// Then draw each cell using its effective width (own width + claimed neighbors).
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::drawRow(int screenRow, int dataRow)
+{
+    int screenWidth = screen->cols();
 
-            screenCol += colWidth;
+    // Max visible columns we'll track per row
+    static const int MAX_VIS_COLS = 128;
+
+    // Collect visible column info for this row
+    int dataCols[MAX_VIS_COLS];
+    int screenXs[MAX_VIS_COLS];
+    int colWidths[MAX_VIS_COLS];
+    int numCols = 0;
+
+    int sx = _rowHeaderWidth;
+    for (int dc = _scrollColOffset; sx < screenWidth && numCols < MAX_VIS_COLS; dc++) {
+        dataCols[numCols] = dc;
+        screenXs[numCols] = sx;
+        colWidths[numCols] = getColumnWidth(dc);
+        numCols++;
+        sx += getColumnWidth(dc);
+    }
+
+    if (numCols == 0) {
+        return;
+    }
+
+    // effectiveWidth[i] = total screen columns this cell will draw
+    // claimedBy[i] = index of the cell that claimed this slot (-1 = self)
+    int effectiveWidth[MAX_VIS_COLS];
+    int claimedBy[MAX_VIS_COLS];
+    for (int i = 0; i < numCols; i++) {
+        effectiveWidth[i] = colWidths[i];
+        claimedBy[i] = -1;
+    }
+
+    // Pass 1: left-aligned text overflow (left-to-right)
+    for (int i = 0; i < numCols; i++) {
+        CxSheetCell *cell = sheetModel->getCellPtr(
+            CxSheetCellCoordinate(dataRow, dataCols[i]));
+        if (cell == NULL || !isCellTextType(cell)) {
+            continue;
+        }
+        CxString align = getCellAlignment(cell);
+        if (align != "left") {
+            continue;
+        }
+        int contentWidth = getCellContentWidth(cell);
+        if (contentWidth <= colWidths[i]) {
+            continue;  // fits in cell, no overflow needed
+        }
+
+        // Try to claim columns to the right
+        int totalWidth = colWidths[i];
+        for (int j = i + 1; j < numCols && totalWidth < contentWidth; j++) {
+            if (claimedBy[j] != -1) {
+                break;  // already claimed by another overflow
+            }
+            if (isCellOccupied(dataRow, dataCols[j])) {
+                break;  // occupied cell stops overflow
+            }
+            HighlightType ht = getHighlightTypeForCell(dataRow, dataCols[j]);
+            if (ht != HIGHLIGHT_NONE) {
+                break;  // highlighted cell stops overflow (cursor reveals boundary)
+            }
+            claimedBy[j] = i;
+            totalWidth += colWidths[j];
+        }
+        effectiveWidth[i] = totalWidth;
+    }
+
+    // Pass 2: right-aligned text overflow (right-to-left)
+    for (int i = numCols - 1; i >= 0; i--) {
+        CxSheetCell *cell = sheetModel->getCellPtr(
+            CxSheetCellCoordinate(dataRow, dataCols[i]));
+        if (cell == NULL || !isCellTextType(cell)) {
+            continue;
+        }
+        CxString align = getCellAlignment(cell);
+        if (align != "right") {
+            continue;
+        }
+        int contentWidth = getCellContentWidth(cell);
+        if (contentWidth <= colWidths[i]) {
+            continue;
+        }
+
+        // Try to claim columns to the left
+        int totalWidth = colWidths[i];
+        for (int j = i - 1; j >= 0 && totalWidth < contentWidth; j--) {
+            if (claimedBy[j] != -1) {
+                break;
+            }
+            if (isCellOccupied(dataRow, dataCols[j])) {
+                break;
+            }
+            HighlightType ht = getHighlightTypeForCell(dataRow, dataCols[j]);
+            if (ht != HIGHLIGHT_NONE) {
+                break;
+            }
+            claimedBy[j] = i;
+            totalWidth += colWidths[j];
+        }
+        effectiveWidth[i] = totalWidth;
+    }
+
+    // Draw pass: render each cell
+    for (int i = 0; i < numCols; i++) {
+        if (claimedBy[i] != -1) {
+            continue;  // this cell's space is consumed by an overflowing neighbor
+        }
+
+        // Clip effective width to screen edge
+        int drawWidth = effectiveWidth[i];
+        int availableWidth = screenWidth - screenXs[i];
+        if (drawWidth > availableWidth) {
+            drawWidth = availableWidth;
+        }
+
+        // For right-aligned overflow, the draw starts at an earlier screen column
+        int drawScreenCol = screenXs[i];
+        CxSheetCell *cell = sheetModel->getCellPtr(
+            CxSheetCellCoordinate(dataRow, dataCols[i]));
+        if (drawWidth > colWidths[i] && cell != NULL) {
+            CxString align = getCellAlignment(cell);
+            if (align == "right") {
+                // Shift draw start leftward by the extra claimed width
+                drawScreenCol = screenXs[i] - (drawWidth - colWidths[i]);
+                // Clip to screen edge on left
+                int availLeft = screenWidth - drawScreenCol;
+                if (availLeft < drawWidth) {
+                    drawWidth = availLeft;
+                }
+            }
+        }
+
+        CxScreen::placeCursor(screenRow, drawScreenCol);
+        CxSheetCellCoordinate coord(dataRow, dataCols[i]);
+
+        CxString content = formatCellValue(
+            sheetModel->getCellPtr(coord), drawWidth);
+
+        HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCols[i]);
+        switch (highlightType) {
+            case HIGHLIGHT_CURSOR:
+                _defaults->applySelectedCellColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_HUNT:
+                _defaults->applyCellHuntColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_HUNT_RANGE:
+                _defaults->applyCellHuntRangeColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_RANGE:
+                _defaults->applyRangeSelectColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_NONE:
+            default:
+                _defaults->applyCellColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
         }
     }
 }
@@ -778,6 +964,122 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
     }
 
     return result;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::isCellOccupied
+//
+// Returns 1 if the cell blocks text overflow. A cell is occupied if it has
+// actual content (TEXT, DOUBLE, FORMULA), symbolFill (borders), or textmap
+// (derived display text). Empty cells with only formatting attrs are NOT occupied.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::isCellOccupied(int dataRow, int dataCol)
+{
+    CxSheetCell *cell = sheetModel->getCellPtr(CxSheetCellCoordinate(dataRow, dataCol));
+    if (cell == NULL) {
+        return 0;  // never touched — not occupied
+    }
+    if (cell->getType() != CxSheetCell::EMPTY) {
+        return 1;  // has content
+    }
+    if (cell->hasAppAttribute("symbolFill")) {
+        return 1;  // border cell
+    }
+    if (cell->hasAppAttribute("textmap")) {
+        return 1;  // derived display text
+    }
+    return 0;  // empty cell (may have formatting attrs)
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::isCellTextType
+//
+// Returns 1 if the cell's content is text-like (only text overflows, not numbers).
+// TEXT cells and textmap cells return 1. Everything else returns 0.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::isCellTextType(CxSheetCell *cell)
+{
+    if (cell == NULL) {
+        return 0;
+    }
+    if (cell->getType() == CxSheetCell::TEXT) {
+        return 1;
+    }
+    if (cell->hasAppAttribute("textmap")) {
+        return 1;
+    }
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getCellAlignment
+//
+// Get alignment for a cell. Returns "left", "right", or "center".
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::getCellAlignment(CxSheetCell *cell)
+{
+    if (cell == NULL) {
+        return "left";
+    }
+    if (cell->hasAppAttribute("align")) {
+        return cell->getAppAttributeString("align");
+    }
+    if (cell->getType() != CxSheetCell::TEXT) {
+        return "right";
+    }
+    return "left";
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getCellContentWidth
+//
+// Get the untruncated display width of a cell's formatted content.
+// Uses formatCellValue with a very large width to get the full content,
+// then measures its display width (excluding trailing padding spaces).
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getCellContentWidth(CxSheetCell *cell)
+{
+    if (cell == NULL) {
+        return 0;
+    }
+
+    // Format with large width to avoid truncation
+    CxString content = formatCellValue(cell, 1000);
+
+    // Strip trailing spaces to get actual content width
+    CxUTFString utfContent;
+    utfContent.fromCxString(content, 8);
+
+    CxUTFCharacter spaceChar = CxUTFCharacter::fromASCII(' ');
+    int lastNonSpace = -1;
+    for (int i = 0; i < utfContent.charCount(); i++) {
+        const CxUTFCharacter *ch = utfContent.at(i);
+        if (ch != NULL && !(*ch == spaceChar)) {
+            lastNonSpace = i;
+        }
+    }
+
+    if (lastNonSpace < 0) {
+        return 0;
+    }
+
+    // Measure display width up to and including last non-space
+    int width = 0;
+    for (int i = 0; i <= lastNonSpace; i++) {
+        const CxUTFCharacter *ch = utfContent.at(i);
+        if (ch != NULL) {
+            width += ch->displayWidth();
+        }
+    }
+    return width;
 }
 
 

@@ -167,6 +167,7 @@ class SheetView {
     void drawColumnHeaders(void);
     void drawRowNumbers(void);
     void drawCells(void);
+    void drawRow(int screenRow, int dataRow);
     void drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
                   HighlightType highlightType);
 
@@ -196,6 +197,18 @@ class SheetView {
 
     CxString evaluateTextmapRule(CxString ruleStr);
     // evaluate a textmap rule string and return the matched text label
+
+    int isCellOccupied(int dataRow, int dataCol);
+    // check if a cell blocks text overflow (has content, symbolFill, or textmap)
+
+    int getCellContentWidth(CxSheetCell *cell);
+    // get the untruncated display width of a cell's formatted content
+
+    CxString getCellAlignment(CxSheetCell *cell);
+    // get alignment string for a cell ("left", "right", or "center")
+
+    int isCellTextType(CxSheetCell *cell);
+    // check if cell content is text (TEXT type or textmap) — only text overflows
 };
 
 
