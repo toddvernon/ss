@@ -646,11 +646,11 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
     }
 
     // Check for currency - needs special handling
-    // Format: $    123.45 (positive) or $  (123.45) (negative)
-    // $ is always left-aligned, number (with optional parens) is right-aligned
+    // Format:  $   123.45 (positive) or  $ (123.45) (negative)
+    // Space + $ on left, number (with optional parens) is right-aligned
     int isCurrency = cell->getAppAttributeBool("currency", false) ? 1 : 0;
 
-    if (isCurrency && width > 1) {
+    if (isCurrency && width > 2) {
         // Check if value is negative (for parentheses display)
         double cellValue = 0.0;
         if (cell->getType() == CxSheetCell::DOUBLE) {
@@ -673,8 +673,8 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
         utfNumber.fromCxString(numberPart, 8);
         int numberWidth = utfNumber.displayWidth();
 
-        // Available width after $ prefix
-        int availWidth = width - 1;  // 1 char for $
+        // Available width after " $" prefix
+        int availWidth = width - 2;  // 2 chars for space + $
 
         if (availWidth < 1) {
             // Not enough room - just fill with #
@@ -694,7 +694,7 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
                     break;
                 }
             }
-            result = CxString("$") + truncated.toBytes();
+            result = CxString(" $") + truncated.toBytes();
             // Pad with spaces if truncation left room
             for (int i = currentWidth; i < availWidth; i++) {
                 result = result + " ";
@@ -705,7 +705,7 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
             if (alignment == "center") {
                 int leftPad = padding / 2;
                 int rightPad = padding - leftPad;
-                result = CxString("$");
+                result = CxString(" $");
                 for (int i = 0; i < leftPad; i++) {
                     result = result + " ";
                 }
@@ -714,15 +714,15 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
                     result = result + " ";
                 }
             } else if (alignment == "right") {
-                // $ on left, spaces, then number (with parens) on right
-                result = CxString("$");
+                // space+$ on left, spaces, then number (with parens) on right
+                result = CxString(" $");
                 for (int i = 0; i < padding; i++) {
                     result = result + " ";
                 }
                 result = result + numberPart;
             } else {
-                // Left-align: $ then number then padding
-                result = CxString("$") + numberPart;
+                // Left-align: space+$ then number then padding
+                result = CxString(" $") + numberPart;
                 for (int i = 0; i < padding; i++) {
                     result = result + " ";
                 }

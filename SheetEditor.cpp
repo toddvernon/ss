@@ -1673,6 +1673,29 @@ SheetEditor::commitDataEntry(void)
             return;
         }
 
+        // Preserve formatting attributes from the existing cell when the new
+        // input doesn't explicitly specify them (e.g. typing "25" into a
+        // currency cell should keep currency formatting).
+        CxSheetCell *oldCellPtr = sheetModel->getCellPtr(pos);
+        int oldHasCurrency = 0;
+        int oldHasPercent = 0;
+        int oldHasThousands = 0;
+        int oldHasDecimalPlaces = 0;
+        int oldDecimalPlaces = 2;
+        int oldHasAlign = 0;
+        CxString oldAlign;
+        if (oldCellPtr) {
+            oldHasCurrency = oldCellPtr->hasAppAttribute("currency") ? 1 : 0;
+            oldHasPercent = oldCellPtr->hasAppAttribute("percent") ? 1 : 0;
+            oldHasThousands = oldCellPtr->hasAppAttribute("thousands") ? 1 : 0;
+            oldHasDecimalPlaces = oldCellPtr->hasAppAttribute("decimalPlaces") ? 1 : 0;
+            oldDecimalPlaces = oldCellPtr->getAppAttributeInt("decimalPlaces", 2);
+            oldHasAlign = oldCellPtr->hasAppAttribute("align") ? 1 : 0;
+            if (oldHasAlign) {
+                oldAlign = oldCellPtr->getAppAttributeString("align");
+            }
+        }
+
         // Set cell value based on parsed type
         if (result.cellType == 2) {  // DOUBLE
             cell.setDouble(CxDouble(result.doubleValue));
@@ -1683,10 +1706,27 @@ SheetEditor::commitDataEntry(void)
 
         sheetModel->setCell(pos, cell);
 
-        // Apply format attributes (dateFormat, currency, percent, thousands)
+        // Apply format attributes from parsing (dateFormat, currency, percent, thousands)
         CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
         if (cellPtr) {
             CxSheetInputParser::applyParsingAttributes(cellPtr, result);
+
+            // Carry forward pre-existing formatting when input didn't specify it
+            if (!result.hasCurrency && oldHasCurrency) {
+                cellPtr->setAppAttribute("currency", true);
+            }
+            if (!result.hasPercent && oldHasPercent) {
+                cellPtr->setAppAttribute("percent", true);
+            }
+            if (!result.hasThousands && oldHasThousands) {
+                cellPtr->setAppAttribute("thousands", true);
+            }
+            if (oldHasDecimalPlaces && result.dateFormat.length() == 0) {
+                cellPtr->setAppAttribute("decimalPlaces", oldDecimalPlaces);
+            }
+            if (oldHasAlign) {
+                cellPtr->setAppAttribute("align", oldAlign.data());
+            }
         }
     }
 
