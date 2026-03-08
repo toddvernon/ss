@@ -177,6 +177,12 @@ class SheetView {
     void ensureCursorVisible(void);
     // adjust scroll offsets if cursor is off-screen
 
+    void deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos);
+    // use terminal scroll regions for efficient vertical scrolling
+
+    void drawRowNumber(int screenRow, int dataRow);
+    // draw a single row number (used by deltaScroll)
+
     HighlightType getHighlightTypeForCell(int dataRow, int dataCol);
     // determine appropriate highlight type for a cell
 

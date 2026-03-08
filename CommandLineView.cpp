@@ -87,8 +87,6 @@ CommandLineView::updateScreen(void)
     } else {
         _screen->showCursor();
     }
-
-    fflush(stdout);
 }
 
 
@@ -150,5 +148,4 @@ void
 CommandLineView::placeCursorAt(int col)
 {
     CxScreen::placeCursor(_screenRow, col);
-    fflush(stdout);
 }

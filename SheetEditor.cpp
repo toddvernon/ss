@@ -204,6 +204,7 @@ SheetEditor::run(void)
         // Cell hunt mode takes priority when active
         if (_inCellHuntMode) {
             focusCellHunt(keyAction);
+            fflush(stdout);
             if (_quitRequested) {
                 return;
             }
@@ -226,6 +227,9 @@ SheetEditor::run(void)
                 focusDataEntry(keyAction);
                 break;
         }
+
+        // Single flush per action (consolidated from individual view updates)
+        fflush(stdout);
 
         // Check if quit was requested
         if (_quitRequested) {
@@ -1819,7 +1823,6 @@ SheetEditor::updateDataEntryDisplay(void)
     commandLineView->setText(display);
     commandLineView->updateScreen();
     commandLineView->placeCursorAt(prefixLen + _dataEntryCursorPos);
-    fflush(stdout);
 }
 
 
@@ -2003,7 +2006,6 @@ SheetEditor::updateCellHuntDisplay(void)
 
     // Place cursor after the reference preview
     commandLineView->placeCursorAt(9 + _cellHuntInsertPos + ref.length());
-    fflush(stdout);
 }
 
 

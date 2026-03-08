@@ -103,8 +103,6 @@ SheetView::updateScreen(void)
 
     // Draw status/divider line at bottom of sheet area
     updateStatusLine();
-
-    fflush(stdout);
 }
 
 
@@ -152,8 +150,6 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
         int screenRow = _startRow + _colHeaderHeight + (dataRow - _scrollRowOffset);
         drawRow(screenRow, dataRow);
     }
-
-    fflush(stdout);
 }
 
 
@@ -198,17 +194,16 @@ SheetView::updateVisibleTextmapCells(void)
         }
     }
 
-    if (redrew) {
-        fflush(stdout);
-    }
+    (void)redrew;  // Variable tracked for potential future use
 }
 
 
 //-------------------------------------------------------------------------------------------------
 // SheetView::updateCursorMove
 //
-// Optimized update for cursor movement. Checks if scrolling is needed and does a
-// full redraw if so, otherwise just redraws the old and new cell positions.
+// Optimized update for cursor movement. Checks if scrolling is needed and uses
+// terminal scroll regions for small vertical scrolls, falls back to full redraw
+// for large jumps or horizontal scrolling.
 //-------------------------------------------------------------------------------------------------
 void
 SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos)
@@ -220,19 +215,40 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
     int visCols = visibleDataCols();
 
     // Check if new position is outside visible area (scrolling needed)
-    int needsScroll = 0;
+    int needsRowScroll = 0;
+    int needsColScroll = 0;
+
     if (newRow < _scrollRowOffset || newRow >= _scrollRowOffset + visRows) {
-        needsScroll = 1;
+        needsRowScroll = 1;
     }
     if (newCol < _scrollColOffset || newCol >= _scrollColOffset + visCols) {
-        needsScroll = 1;
+        needsColScroll = 1;
     }
 
-    if (needsScroll) {
-        // Full redraw - ensureCursorVisible will adjust scroll offsets
+    if (needsColScroll) {
+        // Horizontal scroll always requires full redraw (column headers change)
         updateScreen();
+    } else if (needsRowScroll) {
+        // Calculate how many rows we need to scroll
+        int rowDelta = 0;
+        if (newRow < _scrollRowOffset) {
+            // Scrolling up - new row is above visible area
+            rowDelta = newRow - _scrollRowOffset;  // negative
+        } else if (newRow >= _scrollRowOffset + visRows) {
+            // Scrolling down - new row is below visible area
+            rowDelta = newRow - (_scrollRowOffset + visRows - 1);  // positive
+        }
+
+        // Use delta scroll for small scrolls (1-3 rows), full redraw for large jumps
+        int absRowDelta = rowDelta < 0 ? -rowDelta : rowDelta;
+        if (absRowDelta <= 3 && absRowDelta > 0) {
+            deltaScroll(rowDelta, oldPos, newPos);
+        } else {
+            // Large jump - full redraw
+            updateScreen();
+        }
     } else {
-        // Just redraw the two affected cells
+        // No scrolling needed - just redraw the two affected cells
         CxSList<CxSheetCellCoordinate> affectedCells;
         affectedCells.append(oldPos);
         if (!(oldPos == newPos)) {
@@ -320,6 +336,85 @@ SheetView::drawRowNumbers(void)
 
     // Reset colors
     _defaults->resetColors(screen);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::drawRowNumber
+//
+// Draw a single row number at the specified screen row.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::drawRowNumber(int screenRow, int dataRow)
+{
+    _defaults->applyHeaderColors(screen);
+    CxScreen::placeCursor(screenRow, 0);
+
+    char rowNum[16];
+    snprintf(rowNum, sizeof(rowNum), "%4d ", dataRow + 1);
+    printf("%s", rowNum);
+
+    _defaults->resetColors(screen);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::deltaScroll
+//
+// Use terminal scroll regions for efficient vertical scrolling.
+// Only redraws the new rows that appear at the edge, rather than the entire screen.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos)
+{
+    // Calculate the data area boundaries (excluding column header and status line)
+    int dataStartRow = _startRow + _colHeaderHeight;
+    int dataEndRow = _endRow - 1;  // Exclude status line
+    int visRows = visibleDataRows();
+
+    // Set scroll region to data area only
+    CxScreen::setScrollRegion(dataStartRow, dataEndRow);
+
+    if (rowDelta > 0) {
+        // Scrolling down - content moves up, new rows appear at bottom
+        CxScreen::scrollUp(rowDelta);
+        _scrollRowOffset += rowDelta;
+
+        // Redraw the new rows at the bottom
+        for (int i = 0; i < rowDelta; i++) {
+            int screenRow = dataEndRow - rowDelta + 1 + i;
+            int dataRow = _scrollRowOffset + visRows - rowDelta + i;
+            drawRowNumber(screenRow, dataRow);
+            drawRow(screenRow, dataRow);
+        }
+    } else if (rowDelta < 0) {
+        // Scrolling up - content moves down, new rows appear at top
+        int scrollAmount = -rowDelta;
+        CxScreen::scrollDown(scrollAmount);
+        _scrollRowOffset += rowDelta;  // rowDelta is negative
+
+        // Redraw the new rows at the top
+        for (int i = 0; i < scrollAmount; i++) {
+            int screenRow = dataStartRow + i;
+            int dataRow = _scrollRowOffset + i;
+            drawRowNumber(screenRow, dataRow);
+            drawRow(screenRow, dataRow);
+        }
+    }
+
+    // Reset scroll region to full screen
+    CxScreen::resetScrollRegion();
+
+    // Redraw cursor cells (old and new positions)
+    CxSList<CxSheetCellCoordinate> cells;
+    cells.append(oldPos);
+    if (!(oldPos == newPos)) {
+        cells.append(newPos);
+    }
+    updateCells(cells);
+
+    // Update status line to reflect new position
+    updateStatusLine();
 }
 
 
@@ -1786,7 +1881,6 @@ SheetView::updateStatusLine(void)
     printf("%s", statusLine.data());
 
     screen->resetColors();
-    fflush(stdout);
 }
 
 

@@ -76,8 +76,6 @@ MessageLineView::updateScreen(void)
 
     // Reset color
     _screen->resetForegroundColor();
-
-    fflush(stdout);
 }
 
 
