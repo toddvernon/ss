@@ -51,7 +51,7 @@ left and up and down
    - ESC cancels the entry and returns to EDIT mode (cell unchanged)
 
 9) **ESC key enters command mode** and jumps the cursor to the command line.
-   The command line offers up command prefixes (see the cm app): "command> file- | view- | format-"
+   The command line offers up command prefixes (see the cm app): "command> file- | view- | modify-"
    Another ESC exits command mode, aborting the command and returning to EDIT mode.
 
 ## Formula Mode and Cell Hunt
@@ -102,7 +102,7 @@ this is cell                this is a cell
 
 
 13) cells height will always be one terminal row.  Cell width is variable but consistent for all rows in the spreadsheet.  An ESC command
-will set the column width based on the column the cursor is in when invocated <ESC> format- | cellwidth ?
+will set the column width based on the column the cursor is in when invocated <ESC> modify- | cellwidth ?
 
 
 # Project layout

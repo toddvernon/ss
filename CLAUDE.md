@@ -196,13 +196,13 @@ delete-row                    Delete current row
 delete-column                 Delete current column
 ```
 
-**format-** (cell formatting)
+**modify-** (cell formatting)
 ```
-format-width    <columns>     Set column width
-format-align    <left|right|center>
-format-decimal  <places>      Set decimal places for numbers
-format-bold                   Toggle bold
-format-color    <color>       Set text color
+modify-width    <columns>     Set column width
+modify-align    <left|right|center>
+modify-decimal  <places>      Set decimal places for numbers
+modify-bold                   Toggle bold
+modify-color    <color>       Set text color
 ```
 
 **view-**

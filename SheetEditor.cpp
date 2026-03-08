@@ -793,7 +793,7 @@ SheetEditor::cancelCommandInput(void)
 //
 // Update the command line to show current input and matches.
 // Shows category prefixes when input is empty, then collapses sub-categories
-// (like format-align-) until narrowed down. Cursor positioned after typed text.
+// (like modify-align-) until narrowed down. Cursor positioned after typed text.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::updateCommandDisplay(void)
@@ -812,7 +812,7 @@ SheetEditor::updateCommandDisplay(void)
         display = display + "  ";
 
         if (_cmdBuffer.length() == 0) {
-            // Empty input: show category prefixes (file-, edit-, format-, etc.)
+            // Empty input: show category prefixes (file-, edit-, modify-, etc.)
             CxString categories[16];
             int categoryCount = 0;
 
@@ -846,8 +846,8 @@ SheetEditor::updateCommandDisplay(void)
             }
         } else {
             // Has input: show suffixes after the last completed segment (last dash)
-            // This way "format-c" strips "format-" to show "col- | cell-"
-            // And "format-cell-number-" strips all of it to show "currency | decimal | ..."
+            // This way "modify-c" strips "modify-" to show "col- | cell-"
+            // And "modify-cell-number-" strips all of it to show "currency | decimal | ..."
 
             // Find last dash in user input - that's our confirmed prefix boundary
             int lastDash = -1;
@@ -1342,7 +1342,7 @@ SheetEditor::CMD_InsertSymbol(CxString commandLine)
 // SheetEditor::CMD_FormatColWidth
 //
 // Adjust column width by a relative amount (+n or -n).
-// Example: "format-width +5" increases width by 5, "format-width -3" decreases by 3.
+// Example: "modify-width +5" increases width by 5, "modify-width -3" decreases by 3.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::CMD_FormatColWidth(CxString commandLine)
@@ -1352,7 +1352,7 @@ SheetEditor::CMD_FormatColWidth(CxString commandLine)
     widthStr.stripTrailing(" \t\n\r");
 
     if (widthStr.length() == 0) {
-        setMessage("Usage: format-width +n or -n");
+        setMessage("Usage: modify-width +n or -n");
         return;
     }
 
@@ -2809,7 +2809,7 @@ SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
     // Parse the argument
     CxString arg = commandLine.nextToken(" \t");
     if (arg.length() == 0) {
-        setMessage("Usage: format-decimal <n> (0-10)");
+        setMessage("Usage: modify-decimal <n> (0-10)");
         return;
     }
 

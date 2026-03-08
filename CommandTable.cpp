@@ -8,7 +8,7 @@
 //  See LICENSE file for details.
 //
 //  Static command table defining all ESC commands. Commands follow a category-action
-//  naming convention (file-, edit-, format-, view-, etc.).
+//  naming convention (file-, edit-, modify-, view-, etc.).
 //
 //-------------------------------------------------------------------------------------------------
 
@@ -74,74 +74,74 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_Clear,
       NULL },
 
-    //--- format-col- (column operations) ----------------------------------------
-    { "format-col-width",
+    //--- modify-col- (column operations) ----------------------------------------
+    { "modify-col-width",
       "<+n|-n>",
       "Adjust column width (+n wider, -n narrower)",
       CMD_FLAG_NEEDS_ARG,
       &SheetEditor::CMD_FormatColWidth,
       NULL },
 
-    { "format-col-fit",
+    { "modify-col-fit",
       NULL,
       "Auto-fit column width to content",
       0,
       &SheetEditor::CMD_FormatColFit,
       NULL },
 
-    //--- format-cell-align- (cell alignment) -------------------------------------
-    { "format-cell-align-left",
+    //--- modify-cell-align- (cell alignment) -------------------------------------
+    { "modify-cell-align-left",
       NULL,
       "Left-align cell contents",
       0,
       &SheetEditor::CMD_FormatCellAlignLeft,
       NULL },
 
-    { "format-cell-align-center",
+    { "modify-cell-align-center",
       NULL,
       "Center cell contents",
       0,
       &SheetEditor::CMD_FormatCellAlignCenter,
       NULL },
 
-    { "format-cell-align-right",
+    { "modify-cell-align-right",
       NULL,
       "Right-align cell contents",
       0,
       &SheetEditor::CMD_FormatCellAlignRight,
       NULL },
 
-    //--- format-cell-number- (number formatting) ---------------------------------
-    { "format-cell-number-currency",
+    //--- modify-cell-number- (number formatting) ---------------------------------
+    { "modify-cell-number-currency",
       NULL,
       "Toggle currency format ($)",
       0,
       &SheetEditor::CMD_FormatCellNumberCurrency,
       NULL },
 
-    { "format-cell-number-decimal",
+    { "modify-cell-number-decimal",
       "<n>",
       "Set decimal places (0-10)",
       CMD_FLAG_NEEDS_ARG,
       &SheetEditor::CMD_FormatCellNumberDecimal,
       NULL },
 
-    { "format-cell-number-percent",
+    { "modify-cell-number-percent",
       NULL,
       "Toggle percent format (%)",
       0,
       &SheetEditor::CMD_FormatCellNumberPercent,
       NULL },
 
-    { "format-cell-number-thousands",
+    { "modify-cell-number-thousands",
       NULL,
       "Toggle thousands separators (,)",
       0,
       &SheetEditor::CMD_FormatCellNumberThousands,
       NULL },
 
-    //--- format-cell-text- (text formatting) ----------------------------------
-    { "format-cell-text-wide",
+    //--- modify-cell-text- (text formatting) ----------------------------------
+    { "modify-cell-text-wide",
       NULL,
       "Toggle wide text spacing (F U N D)",
       0,

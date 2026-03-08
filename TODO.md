@@ -26,8 +26,8 @@ CxSheetCellCoordinate _rangeCurrent;
 ## Phase 2: Column Width ✓
 
 **Commands:**
-- `format-col-width <+n|-n>` - adjust column width (+n wider, -n narrower)
-- `format-col-fit` - auto-fit column width to content
+- `modify-col-width <+n|-n>` - adjust column width (+n wider, -n narrower)
+- `modify-col-fit` - auto-fit column width to content
 
 **With range selection:**
 - Commands apply to all columns in the selected range
@@ -111,10 +111,10 @@ Lock rows/columns so they stay visible while rest scrolls.
 Display: `|$     1,234.56|`
 
 **Commands:**
-- `format-cell-number-currency` - toggle currency format
-- `format-cell-number-decimal <n>` - set decimal places (0-10)
-- `format-cell-number-percent` - toggle percent format
-- `format-cell-number-thousands` - toggle thousands separators
+- `modify-cell-number-currency` - toggle currency format
+- `modify-cell-number-decimal <n>` - set decimal places (0-10)
+- `modify-cell-number-percent` - toggle percent format
+- `modify-cell-number-thousands` - toggle thousands separators
 
 **JSON storage:**
 ```json
@@ -135,9 +135,9 @@ Display: `|$     1,234.56|`
 ## Phase 7: Alignment ✓
 
 **Commands:**
-- `format-cell-align-left`
-- `format-cell-align-center`
-- `format-cell-align-right`
+- `modify-cell-align-left`
+- `modify-cell-align-center`
+- `modify-cell-align-right`
 
 **With range selection:**
 - Applies to all cells in range
@@ -162,14 +162,14 @@ Requires popup UI similar to cm's project window.
 ## Phase 9: Row Operations
 
 **Commands:**
-- `format-hide-row` - hide selected row(s)
-- `format-show-row` - unhide
+- `modify-hide-row` - hide selected row(s)
+- `modify-show-row` - unhide
 - `insert-row` - insert row above cursor
 - `delete-row` - delete current row
 
 **Column equivalents:**
-- `format-hide-column`
-- `format-show-column`
+- `modify-hide-column`
+- `modify-show-column`
 - `insert-column`
 - `delete-column`
 
@@ -271,10 +271,10 @@ $1,234.56       1234.56   currency=true, thousands=true
 ```
 
 **Output formatting commands:**
-- `format-cell-date-mdy` - mm/dd/yyyy
-- `format-cell-date-ymd` - yyyy-mm-dd
-- `format-cell-date-dmy` - dd/mm/yyyy
-- `format-cell-date-long` - "October 20, 2026"
+- `modify-cell-date-mdy` - mm/dd/yyyy
+- `modify-cell-date-ymd` - yyyy-mm-dd
+- `modify-cell-date-dmy` - dd/mm/yyyy
+- `modify-cell-date-long` - "October 20, 2026"
 
 **Time support (future):**
 - `TIME(h,m,s)` function (fractional day)
@@ -299,17 +299,17 @@ $1,234.56       1234.56   currency=true, thousands=true
 3. At commit: parse input with tryParseDate(), tryParseNumber()
 4. Set cell type + format attributes based on parse result
 5. Add date display formatting in SheetView
-6. Add format-cell-date-* commands
+6. Add modify-cell-date-* commands
 
 ---
 
 ## Implementation Order
 
 1. ✓ Range selection in EDIT mode
-2. ✓ Column width (format-col-width, format-col-fit)
+2. ✓ Column width (modify-col-width, modify-col-fit)
 3. ✓ Copy/paste with reference adjustment (Ctrl-K, Ctrl-Y)
-4. ✓ Number formatting (format-cell-number-*)
-5. ✓ Alignment (format-cell-align-*)
+4. ✓ Number formatting (modify-cell-number-*)
+5. ✓ Alignment (modify-cell-align-*)
 6. **Post-commit parsing (Phase 10)** ← NEXT PRIORITY
 7. Fill operations (Ctrl-D, Ctrl-R)
 8. Freeze panes
