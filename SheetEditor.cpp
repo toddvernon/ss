@@ -1470,9 +1470,12 @@ SheetEditor::getCellDisplayText(CxSheetCell *cell)
 
         case CxSheetCell::DOUBLE:
         {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%g", cell->getDouble().value);
-            return CxString(buf);
+            CxString numStr = sheetView->formatNumber(cell->getDouble().value, cell);
+            // For currency, prepend "$ " (shown separately from number)
+            if (cell->getAppAttributeBool("currency", false)) {
+                return CxString("$ ") + numStr;
+            }
+            return numStr;
         }
 
         case CxSheetCell::FORMULA:
@@ -3115,7 +3118,10 @@ SheetEditor::CMD_InsertRow(CxString commandLine)
     int row = sheetModel->getCurrentPosition().getRow();
     sheetModel->insertRow(row);
 
-    sheetView->updateScreen();
+    // Try optimized terminal insert, fall back to full redraw
+    if (!sheetView->terminalInsertRow(row)) {
+        sheetView->updateScreen();
+    }
     setMessage("Row inserted");
 }
 
@@ -3137,7 +3143,8 @@ SheetEditor::CMD_InsertColumn(CxString commandLine)
     // Shift column widths to match the data shift
     sheetView->shiftColumnWidths(col, 1);
 
-    sheetView->updateScreen();
+    // Use optimized redraw that skips row numbers
+    sheetView->updateScreenForColumnChange();
     setMessage("Column inserted");
 }
 
@@ -3155,7 +3162,10 @@ SheetEditor::CMD_DeleteRow(CxString commandLine)
     int row = sheetModel->getCurrentPosition().getRow();
     sheetModel->deleteRow(row);
 
-    sheetView->updateScreen();
+    // Try optimized terminal delete, fall back to full redraw
+    if (!sheetView->terminalDeleteRow(row)) {
+        sheetView->updateScreen();
+    }
     setMessage("Row deleted");
 }
 
@@ -3177,6 +3187,7 @@ SheetEditor::CMD_DeleteColumn(CxString commandLine)
     // Shift column widths to match the data shift
     sheetView->shiftColumnWidths(col, -1);
 
-    sheetView->updateScreen();
+    // Use optimized redraw that skips row numbers
+    sheetView->updateScreenForColumnChange();
     setMessage("Column deleted");
 }

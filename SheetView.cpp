@@ -87,6 +87,8 @@ SheetView::recalcForResize(int startRow, int endRow)
 void
 SheetView::updateScreen(void)
 {
+    CxScreen::beginSyncUpdate();
+
     // Ensure cursor is visible before drawing
     ensureCursorVisible();
 
@@ -103,6 +105,40 @@ SheetView::updateScreen(void)
 
     // Draw status/divider line at bottom of sheet area
     updateStatusLine();
+
+    CxScreen::endSyncUpdate();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::updateScreenForColumnChange
+//
+// Optimized redraw for column insert/delete operations.
+// Skips row number redrawing since row numbers don't change for column operations.
+// Clears only from the row header width onwards to preserve existing row numbers.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::updateScreenForColumnChange(void)
+{
+    CxScreen::beginSyncUpdate();
+
+    // Ensure cursor is visible before drawing
+    ensureCursorVisible();
+
+    // Clear only from row header width onwards (preserve row numbers)
+    for (int r = _startRow; r <= _endRow; r++) {
+        CxScreen::placeCursor(r, _rowHeaderWidth);
+        CxScreen::clearScreenFromCursorToEndOfLine();
+    }
+
+    // Draw components (skip row numbers - they don't change for column ops)
+    drawColumnHeaders();
+    drawCells();
+
+    // Draw status/divider line at bottom of sheet area
+    updateStatusLine();
+
+    CxScreen::endSyncUpdate();
 }
 
 
@@ -367,6 +403,8 @@ SheetView::drawRowNumber(int screenRow, int dataRow)
 void
 SheetView::deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos)
 {
+    CxScreen::beginSyncUpdate();
+
     // Calculate the data area boundaries (excluding column header and status line)
     int dataStartRow = _startRow + _colHeaderHeight;
     int dataEndRow = _endRow - 1;  // Exclude status line
@@ -415,6 +453,126 @@ SheetView::deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCo
 
     // Update status line to reflect new position
     updateStatusLine();
+
+    CxScreen::endSyncUpdate();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::terminalInsertRow
+//
+// Optimized row insert using terminal line operations.
+// Uses insertLines() to push content down, then redraws only affected elements:
+//   - Row numbers from inserted row to bottom (they shifted incorrectly)
+//   - The new empty row's cells
+//
+// Returns 1 if optimization was used, 0 if caller should do full redraw.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::terminalInsertRow(int dataRow)
+{
+    int visRows = visibleDataRows();
+
+    // Check if inserted row is visible
+    if (dataRow < _scrollRowOffset || dataRow >= _scrollRowOffset + visRows) {
+        return 0;  // Not visible, caller should do full redraw
+    }
+
+    // Calculate screen coordinates
+    int dataStartRow = _startRow + _colHeaderHeight;
+    int dataEndRow = _endRow - 1;  // Exclude status line
+    int screenRow = dataStartRow + (dataRow - _scrollRowOffset);
+
+    CxScreen::beginSyncUpdate();
+
+    // Set scroll region to data area
+    CxScreen::setScrollRegion(dataStartRow, dataEndRow);
+
+    // Position cursor at the row where we're inserting
+    CxScreen::placeCursor(screenRow, 0);
+
+    // Insert one blank line - pushes all content from here down
+    CxScreen::insertLines(1);
+
+    // Reset scroll region
+    CxScreen::resetScrollRegion();
+
+    // Redraw row numbers from inserted row to visible bottom
+    // (they shifted with content but the numbers are now wrong)
+    for (int r = dataRow; r < _scrollRowOffset + visRows; r++) {
+        int sr = dataStartRow + (r - _scrollRowOffset);
+        drawRowNumber(sr, r);
+    }
+
+    // Draw the new empty row's cells
+    drawRow(screenRow, dataRow);
+
+    // Update status line
+    updateStatusLine();
+
+    CxScreen::endSyncUpdate();
+
+    return 1;  // Optimization was used
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::terminalDeleteRow
+//
+// Optimized row delete using terminal line operations.
+// Uses deleteLines() to pull content up, then redraws only affected elements:
+//   - Row numbers from deleted row to bottom (they shifted incorrectly)
+//   - The bottom row (new content scrolled into view)
+//
+// Returns 1 if optimization was used, 0 if caller should do full redraw.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::terminalDeleteRow(int dataRow)
+{
+    int visRows = visibleDataRows();
+
+    // Check if deleted row is visible
+    if (dataRow < _scrollRowOffset || dataRow >= _scrollRowOffset + visRows) {
+        return 0;  // Not visible, caller should do full redraw
+    }
+
+    // Calculate screen coordinates
+    int dataStartRow = _startRow + _colHeaderHeight;
+    int dataEndRow = _endRow - 1;  // Exclude status line
+    int screenRow = dataStartRow + (dataRow - _scrollRowOffset);
+
+    CxScreen::beginSyncUpdate();
+
+    // Set scroll region to data area
+    CxScreen::setScrollRegion(dataStartRow, dataEndRow);
+
+    // Position cursor at the row being deleted
+    CxScreen::placeCursor(screenRow, 0);
+
+    // Delete one line - pulls all content below up
+    CxScreen::deleteLines(1);
+
+    // Reset scroll region
+    CxScreen::resetScrollRegion();
+
+    // Redraw row numbers from deleted row to visible bottom
+    // (they shifted with content but the numbers are now wrong)
+    for (int r = dataRow; r < _scrollRowOffset + visRows; r++) {
+        int sr = dataStartRow + (r - _scrollRowOffset);
+        drawRowNumber(sr, r);
+    }
+
+    // Draw the bottom row (new content scrolled into view from below)
+    int bottomDataRow = _scrollRowOffset + visRows - 1;
+    int bottomScreenRow = dataEndRow;
+    drawRow(bottomScreenRow, bottomDataRow);
+
+    // Update status line
+    updateStatusLine();
+
+    CxScreen::endSyncUpdate();
+
+    return 1;  // Optimization was used
 }
 
 

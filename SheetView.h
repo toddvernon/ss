@@ -63,12 +63,23 @@ class SheetView {
     void updateScreen(void);
     // redraw the entire sheet view
 
+    void updateScreenForColumnChange(void);
+    // optimized redraw for column insert/delete - skips row numbers
+
     void updateCells(CxSList<CxSheetCellCoordinate> cells);
     // redraw only the specified cells (if visible)
     // used for optimized updates after data changes
 
     void updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos);
     // optimized update for cursor movement - handles scrolling if needed
+
+    int terminalInsertRow(int dataRow);
+    // optimized row insert using terminal line operations
+    // returns 1 if optimization was used, 0 if caller should do full redraw
+
+    int terminalDeleteRow(int dataRow);
+    // optimized row delete using terminal line operations
+    // returns 1 if optimization was used, 0 if caller should do full redraw
 
     void recalcForResize(int startRow, int endRow);
     // recalculate layout after terminal resize
@@ -128,6 +139,9 @@ class SheetView {
 
     void updateVisibleTextmapCells(void);
     // redraw visible cells that have textmap rules (display-layer dependencies)
+
+    CxString formatNumber(double value, CxSheetCell *cell);
+    // format number with currency, decimals, percent, thousands based on cell attributes
 
   private:
 
@@ -194,9 +208,6 @@ class SheetView {
 
     CxString formatCellValue(CxSheetCell *cell, int width);
     // format cell contents for display
-
-    CxString formatNumber(double value, CxSheetCell *cell);
-    // format number with currency, decimals, percent, thousands based on cell attributes
 
     CxString formatSymbolFill(CxString symbolType, int width);
     // format symbol fill cells (box drawing)
