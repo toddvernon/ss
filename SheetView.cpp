@@ -19,6 +19,8 @@
 #include <cx/json/json_utf_object.h>
 #include <cx/json/json_utf_member.h>
 #include <cx/json/json_utf_number.h>
+#include <cx/json/json_utf_string.h>
+#include <cx/json/json_utf_boolean.h>
 #include <cx/sheetModel/sheetInputParser.h>
 
 #include "SheetView.h"
@@ -49,6 +51,15 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
     // Initialize all column widths to 0 (meaning use default)
     for (int i = 0; i < MAX_COLUMNS; i++) {
         _colWidths[i] = 0;
+    }
+
+    // Initialize column format defaults to unset
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        _colAlign[i] = 0;           // 0 = unset
+        _colDecimalPlaces[i] = -1;  // -1 = unset
+        _colCurrency[i] = 0;        // 0 = unset
+        _colPercent[i] = 0;         // 0 = unset
+        _colThousands[i] = 0;       // 0 = unset
     }
 }
 
@@ -653,7 +664,7 @@ SheetView::drawRow(int screenRow, int dataRow)
         if (align != "left") {
             continue;
         }
-        int contentWidth = getCellContentWidth(cell);
+        int contentWidth = getCellContentWidth(cell, dataCols[i]);
         if (contentWidth <= colWidths[i]) {
             continue;  // fits in cell, no overflow needed
         }
@@ -688,7 +699,7 @@ SheetView::drawRow(int screenRow, int dataRow)
         if (align != "right") {
             continue;
         }
-        int contentWidth = getCellContentWidth(cell);
+        int contentWidth = getCellContentWidth(cell, dataCols[i]);
         if (contentWidth <= colWidths[i]) {
             continue;
         }
@@ -746,7 +757,7 @@ SheetView::drawRow(int screenRow, int dataRow)
         CxSheetCellCoordinate coord(dataRow, dataCols[i]);
 
         CxString content = formatCellValue(
-            sheetModel->getCellPtr(coord), drawWidth);
+            sheetModel->getCellPtr(coord), dataCols[i], drawWidth);
 
         HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCols[i]);
         switch (highlightType) {
@@ -806,7 +817,7 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
         colWidth = availableWidth;
     }
 
-    CxString content = formatCellValue(cell, colWidth);
+    CxString content = formatCellValue(cell, dataCol, colWidth);
 
     // Draw with appropriate colors based on highlight type
     switch (highlightType) {
@@ -847,20 +858,22 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 //-------------------------------------------------------------------------------------------------
 // SheetView::formatNumber
 //
-// Format a numeric value based on cell attributes:
+// Format a numeric value based on column defaults and cell attributes:
 //   - "currency" (bool): 2 decimal places, negatives in parentheses
 //   - "decimalPlaces" (int): fixed decimal places (default: auto)
 //   - "percent" (bool): multiply by 100 and suffix with %
 //   - "thousands" (bool): add comma separators, at least 2 decimals if fractional
+// Uses cascaded getters: cell attribute > column default > type-based default.
 //-------------------------------------------------------------------------------------------------
 CxString
-SheetView::formatNumber(double value, CxSheetCell *cell)
+SheetView::formatNumber(double value, int col, CxSheetCell *cell)
 {
-    int isCurrency = cell->getAppAttributeBool("currency", false) ? 1 : 0;
-    int isPercent = cell->getAppAttributeBool("percent", false) ? 1 : 0;
-    int hasThousands = cell->getAppAttributeBool("thousands", false) ? 1 : 0;
-    int hasDecimalPlaces = cell->hasAppAttribute("decimalPlaces") ? 1 : 0;
-    int decimalPlaces = cell->getAppAttributeInt("decimalPlaces", 2);
+    int isCurrency = getEffectiveCurrency(col, cell);
+    int isPercent = getEffectivePercent(col, cell);
+    int hasThousands = getEffectiveThousands(col, cell);
+    int decimalPlaces = getEffectiveDecimalPlaces(col, cell);
+    int hasDecimalPlaces = (decimalPlaces >= 0) ? 1 : 0;
+    if (decimalPlaces < 0) decimalPlaces = 2;  // default for calculations below
 
     // Track if value is negative (for currency parentheses)
     int isNegative = (value < 0) ? 1 : 0;
@@ -873,8 +886,8 @@ SheetView::formatNumber(double value, CxSheetCell *cell)
 
     // Determine decimal places
     int useDecimalPlaces = decimalPlaces;
-    if (isCurrency) {
-        // Currency always uses 2 decimal places
+    if (isCurrency && !hasDecimalPlaces) {
+        // Currency defaults to 2 decimal places if not explicitly set
         useDecimalPlaces = 2;
     } else if (hasThousands && !hasDecimalPlaces) {
         // Thousands with fractional part: ensure at least 2 decimal places
@@ -949,9 +962,10 @@ SheetView::formatNumber(double value, CxSheetCell *cell)
 // Format cell contents for display, truncating or padding as needed.
 // Uses CxUTFString for proper UTF-8 character handling.
 // Handles symbol fill cells (box drawing) via appAttribute "symbolFill".
+// The col parameter is used for column format defaults (cascaded attributes).
 //-------------------------------------------------------------------------------------------------
 CxString
-SheetView::formatCellValue(CxSheetCell *cell, int width)
+SheetView::formatCellValue(CxSheetCell *cell, int col, int width)
 {
     CxString result;
 
@@ -1024,12 +1038,12 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
                     CxString dateFormat = cell->getAppAttributeString("dateFormat");
                     rawText = CxSheetInputParser::formatDate(value, dateFormat);
                 }
-                // Check if any number formatting attributes are set
-                else if (cell->hasAppAttribute("currency") ||
-                    cell->hasAppAttribute("percent") ||
-                    cell->hasAppAttribute("thousands") ||
-                    cell->hasAppAttribute("decimalPlaces")) {
-                    rawText = formatNumber(value, cell);
+                // Check if any number formatting is active (cell or column level)
+                else if (getEffectiveCurrency(col, cell) ||
+                    getEffectivePercent(col, cell) ||
+                    getEffectiveThousands(col, cell) ||
+                    getEffectiveDecimalPlaces(col, cell) >= 0) {
+                    rawText = formatNumber(value, col, cell);
                 } else {
                     char buf[64];
                     snprintf(buf, sizeof(buf), "%g", value);
@@ -1046,12 +1060,12 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
                     CxString dateFormat = cell->getAppAttributeString("dateFormat");
                     rawText = CxSheetInputParser::formatDate(value, dateFormat);
                 }
-                // Check if any number formatting attributes are set
-                else if (cell->hasAppAttribute("currency") ||
-                    cell->hasAppAttribute("percent") ||
-                    cell->hasAppAttribute("thousands") ||
-                    cell->hasAppAttribute("decimalPlaces")) {
-                    rawText = formatNumber(value, cell);
+                // Check if any number formatting is active (cell or column level)
+                else if (getEffectiveCurrency(col, cell) ||
+                    getEffectivePercent(col, cell) ||
+                    getEffectiveThousands(col, cell) ||
+                    getEffectiveDecimalPlaces(col, cell) >= 0) {
+                    rawText = formatNumber(value, col, cell);
                 } else {
                     char buf[64];
                     snprintf(buf, sizeof(buf), "%g", value);
@@ -1102,19 +1116,13 @@ SheetView::formatCellValue(CxSheetCell *cell, int width)
 
     int displayLen = utfText.displayWidth();
 
-    // Determine alignment: check cell attribute, else use default (text=left, numbers=right)
-    CxString alignment = "left";
-    if (cell->hasAppAttribute("align")) {
-        alignment = cell->getAppAttributeString("align");
-    } else if (cell->getType() != CxSheetCell::TEXT) {
-        // Default: numbers are right-aligned
-        alignment = "right";
-    }
+    // Determine alignment using cascaded getter: cell > column > type-default
+    CxString alignment = getEffectiveAlign(col, cell);
 
-    // Check for currency - needs special handling
+    // Check for currency using cascaded getter - needs special handling
     // Format:  $   123.45 (positive) or  $ (123.45) (negative)
     // Space + $ on left, number (with optional parens) is right-aligned
-    int isCurrency = cell->getAppAttributeBool("currency", false) ? 1 : 0;
+    int isCurrency = getEffectiveCurrency(col, cell);
 
     if (isCurrency && width > 2) {
         // Check if value is negative (for parentheses display)
@@ -1325,14 +1333,14 @@ SheetView::getCellAlignment(CxSheetCell *cell)
 // then measures its display width (excluding trailing padding spaces).
 //-------------------------------------------------------------------------------------------------
 int
-SheetView::getCellContentWidth(CxSheetCell *cell)
+SheetView::getCellContentWidth(CxSheetCell *cell, int col)
 {
     if (cell == NULL) {
         return 0;
     }
 
     // Format with large width to avoid truncation
-    CxString content = formatCellValue(cell, 1000);
+    CxString content = formatCellValue(cell, col, 1000);
 
     // Strip trailing spaces to get actual content width
     CxUTFString utfContent;
@@ -2045,8 +2053,10 @@ SheetView::updateStatusLine(void)
 //-------------------------------------------------------------------------------------------------
 // SheetView::loadColumnWidthsFromAppData
 //
-// Load column widths from app data (after sheet load).
-// Expected format: { "columns": { "A": 12, "B": 25, ... } }
+// Load column widths and format defaults from app data (after sheet load).
+// Supports two formats:
+//   Old: { "columns": { "A": 12, "B": 25 } }              (number = width)
+//   New: { "columns": { "A": { "width": 12, "align": "right" } } }  (object)
 //-------------------------------------------------------------------------------------------------
 void
 SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
@@ -2068,7 +2078,7 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
 
     CxJSONUTFObject *columns = (CxJSONUTFObject *)columnsBase;
 
-    // Iterate through all column width entries
+    // Iterate through all column entries
     int numEntries = columns->entries();
     for (int i = 0; i < numEntries; i++) {
         CxJSONUTFMember *member = columns->at(i);
@@ -2080,22 +2090,83 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
         CxUTFString colName = member->var();
         CxString colNameStr = colName.toBytes();
 
-        // Get the width value
-        CxJSONUTFBase *widthBase = member->object();
-        if (widthBase == NULL || widthBase->type() != CxJSONUTFBase::NUMBER) {
-            continue;
-        }
-
-        CxJSONUTFNumber *widthNum = (CxJSONUTFNumber *)widthBase;
-        int width = (int)widthNum->get();
-
         // Convert column letter to column index
         CxSheetCellCoordinate coord;
         int col = coord.lettersToCol(colNameStr);
+        if (col < 0 || col >= MAX_COLUMNS) {
+            continue;
+        }
 
-        // Set the column width
-        if (col >= 0 && col < MAX_COLUMNS) {
-            _colWidths[col] = width;
+        CxJSONUTFBase *valueBase = member->object();
+        if (valueBase == NULL) {
+            continue;
+        }
+
+        // Old format: value is a number (just width)
+        if (valueBase->type() == CxJSONUTFBase::NUMBER) {
+            CxJSONUTFNumber *widthNum = (CxJSONUTFNumber *)valueBase;
+            _colWidths[col] = (int)widthNum->get();
+        }
+        // New format: value is an object with width and format attributes
+        else if (valueBase->type() == CxJSONUTFBase::OBJECT) {
+            CxJSONUTFObject *colObj = (CxJSONUTFObject *)valueBase;
+
+            // Load width
+            CxJSONUTFMember *widthMember = colObj->find("width");
+            if (widthMember != NULL) {
+                CxJSONUTFBase *wb = widthMember->object();
+                if (wb != NULL && wb->type() == CxJSONUTFBase::NUMBER) {
+                    _colWidths[col] = (int)((CxJSONUTFNumber *)wb)->get();
+                }
+            }
+
+            // Load align (1=left, 2=center, 3=right)
+            CxJSONUTFMember *alignMember = colObj->find("align");
+            if (alignMember != NULL) {
+                CxJSONUTFBase *ab = alignMember->object();
+                if (ab != NULL && ab->type() == CxJSONUTFBase::STRING) {
+                    CxString alignStr = ((CxJSONUTFString *)ab)->get().toBytes();
+                    if (alignStr == "left") _colAlign[col] = 1;
+                    else if (alignStr == "center") _colAlign[col] = 2;
+                    else if (alignStr == "right") _colAlign[col] = 3;
+                }
+            }
+
+            // Load decimalPlaces
+            CxJSONUTFMember *decMember = colObj->find("decimalPlaces");
+            if (decMember != NULL) {
+                CxJSONUTFBase *db = decMember->object();
+                if (db != NULL && db->type() == CxJSONUTFBase::NUMBER) {
+                    _colDecimalPlaces[col] = (int)((CxJSONUTFNumber *)db)->get();
+                }
+            }
+
+            // Load currency (true/false -> 1/2)
+            CxJSONUTFMember *currMember = colObj->find("currency");
+            if (currMember != NULL) {
+                CxJSONUTFBase *cb = currMember->object();
+                if (cb != NULL && cb->type() == CxJSONUTFBase::BOOLEAN) {
+                    _colCurrency[col] = ((CxJSONUTFBoolean *)cb)->get() ? 1 : 2;
+                }
+            }
+
+            // Load percent (true/false -> 1/2)
+            CxJSONUTFMember *pctMember = colObj->find("percent");
+            if (pctMember != NULL) {
+                CxJSONUTFBase *pb = pctMember->object();
+                if (pb != NULL && pb->type() == CxJSONUTFBase::BOOLEAN) {
+                    _colPercent[col] = ((CxJSONUTFBoolean *)pb)->get() ? 1 : 2;
+                }
+            }
+
+            // Load thousands (true/false -> 1/2)
+            CxJSONUTFMember *thouMember = colObj->find("thousands");
+            if (thouMember != NULL) {
+                CxJSONUTFBase *tb = thouMember->object();
+                if (tb != NULL && tb->type() == CxJSONUTFBase::BOOLEAN) {
+                    _colThousands[col] = ((CxJSONUTFBoolean *)tb)->get() ? 1 : 2;
+                }
+            }
         }
     }
 }
@@ -2104,8 +2175,9 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
 //-------------------------------------------------------------------------------------------------
 // SheetView::saveColumnWidthsToAppData
 //
-// Save column widths to app data (before sheet save).
-// Writes format: { "columns": { "A": 12, "B": 25, ... } }
+// Save column widths and format defaults to app data (before sheet save).
+// Writes format: { "columns": { "A": { "width": 12, "align": "right" }, ... } }
+// Columns with only width and no format defaults are saved as objects anyway for consistency.
 //-------------------------------------------------------------------------------------------------
 void
 SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
@@ -2114,20 +2186,21 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
         return;
     }
 
-    // Check if any columns have custom widths
-    int hasCustomWidths = 0;
+    // Check if any columns have custom settings (width or format)
+    int hasCustomSettings = 0;
     for (int col = 0; col < MAX_COLUMNS; col++) {
-        if (_colWidths[col] != 0) {
-            hasCustomWidths = 1;
+        if (_colWidths[col] != 0 || _colAlign[col] != 0 ||
+            _colDecimalPlaces[col] >= 0 || _colCurrency[col] != 0 ||
+            _colPercent[col] != 0 || _colThousands[col] != 0) {
+            hasCustomSettings = 1;
             break;
         }
     }
 
-    if (!hasCustomWidths) {
-        // No custom widths - remove existing columns entry if present
+    if (!hasCustomSettings) {
+        // No custom settings - remove existing columns entry if present
         CxJSONUTFMember *existing = appData->find("columns");
         if (existing != NULL) {
-            // Find and remove it
             int numEntries = appData->entries();
             for (int i = 0; i < numEntries; i++) {
                 CxJSONUTFMember *m = appData->at(i);
@@ -2145,15 +2218,66 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
     // Create new columns object
     CxJSONUTFObject *columns = new CxJSONUTFObject();
 
-    // Add entries for each column with custom width
+    // Add entries for each column with custom settings
     CxSheetCellCoordinate coord;  // for colToLetters helper
     for (int col = 0; col < MAX_COLUMNS; col++) {
-        if (_colWidths[col] != 0) {
-            CxString colName = coord.colToLetters(col);
-            CxJSONUTFNumber *widthNum = new CxJSONUTFNumber((double)_colWidths[col]);
-            CxJSONUTFMember *member = new CxJSONUTFMember(colName.data(), widthNum);
-            columns->append(member);
+        // Check if this column has any custom settings
+        int hasWidth = (_colWidths[col] != 0);
+        int hasAlign = (_colAlign[col] != 0);
+        int hasDecimal = (_colDecimalPlaces[col] >= 0);
+        int hasCurrency = (_colCurrency[col] != 0);
+        int hasPercent = (_colPercent[col] != 0);
+        int hasThousands = (_colThousands[col] != 0);
+
+        if (!hasWidth && !hasAlign && !hasDecimal && !hasCurrency &&
+            !hasPercent && !hasThousands) {
+            continue;  // skip columns with no custom settings
         }
+
+        CxString colName = coord.colToLetters(col);
+        CxJSONUTFObject *colObj = new CxJSONUTFObject();
+
+        // Add width
+        if (hasWidth) {
+            CxJSONUTFNumber *widthNum = new CxJSONUTFNumber((double)_colWidths[col]);
+            colObj->append(new CxJSONUTFMember("width", widthNum));
+        }
+
+        // Add align
+        if (hasAlign) {
+            const char *alignStr = "left";
+            if (_colAlign[col] == 2) alignStr = "center";
+            else if (_colAlign[col] == 3) alignStr = "right";
+            CxJSONUTFString *alignVal = new CxJSONUTFString(alignStr);
+            colObj->append(new CxJSONUTFMember("align", alignVal));
+        }
+
+        // Add decimalPlaces
+        if (hasDecimal) {
+            CxJSONUTFNumber *decNum = new CxJSONUTFNumber((double)_colDecimalPlaces[col]);
+            colObj->append(new CxJSONUTFMember("decimalPlaces", decNum));
+        }
+
+        // Add currency (store as bool, 1=true, 2=false)
+        if (hasCurrency) {
+            CxJSONUTFBoolean *currVal = new CxJSONUTFBoolean(_colCurrency[col] == 1);
+            colObj->append(new CxJSONUTFMember("currency", currVal));
+        }
+
+        // Add percent
+        if (hasPercent) {
+            CxJSONUTFBoolean *pctVal = new CxJSONUTFBoolean(_colPercent[col] == 1);
+            colObj->append(new CxJSONUTFMember("percent", pctVal));
+        }
+
+        // Add thousands
+        if (hasThousands) {
+            CxJSONUTFBoolean *thouVal = new CxJSONUTFBoolean(_colThousands[col] == 1);
+            colObj->append(new CxJSONUTFMember("thousands", thouVal));
+        }
+
+        CxJSONUTFMember *member = new CxJSONUTFMember(colName.data(), colObj);
+        columns->append(member);
     }
 
     // Remove existing "columns" entry if present
@@ -2360,4 +2484,232 @@ SheetView::shiftColumnWidths(int col, int direction)
         }
         _colWidths[MAX_COLUMNS - 1] = 0;
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::shiftColumnFormats
+//
+// Shift column format defaults for insert (+1) or delete (-1) column operations.
+// For insert: formats from col onward shift right, new column gets unset values.
+// For delete: formats from col onward shift left, last column gets unset values.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::shiftColumnFormats(int col, int direction)
+{
+    if (col < 0 || col >= MAX_COLUMNS) {
+        return;
+    }
+
+    if (direction > 0) {
+        // Insert: shift right from end to col
+        for (int i = MAX_COLUMNS - 1; i > col; i--) {
+            _colAlign[i] = _colAlign[i - 1];
+            _colDecimalPlaces[i] = _colDecimalPlaces[i - 1];
+            _colCurrency[i] = _colCurrency[i - 1];
+            _colPercent[i] = _colPercent[i - 1];
+            _colThousands[i] = _colThousands[i - 1];
+        }
+        // New column gets unset values
+        _colAlign[col] = 0;
+        _colDecimalPlaces[col] = -1;
+        _colCurrency[col] = 0;
+        _colPercent[col] = 0;
+        _colThousands[col] = 0;
+    } else if (direction < 0) {
+        // Delete: shift left from col to end
+        for (int i = col; i < MAX_COLUMNS - 1; i++) {
+            _colAlign[i] = _colAlign[i + 1];
+            _colDecimalPlaces[i] = _colDecimalPlaces[i + 1];
+            _colCurrency[i] = _colCurrency[i + 1];
+            _colPercent[i] = _colPercent[i + 1];
+            _colThousands[i] = _colThousands[i + 1];
+        }
+        // Last column gets unset values
+        _colAlign[MAX_COLUMNS - 1] = 0;
+        _colDecimalPlaces[MAX_COLUMNS - 1] = -1;
+        _colCurrency[MAX_COLUMNS - 1] = 0;
+        _colPercent[MAX_COLUMNS - 1] = 0;
+        _colThousands[MAX_COLUMNS - 1] = 0;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// Column format getters/setters
+//-------------------------------------------------------------------------------------------------
+int SheetView::getColAlign(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return 0;
+    return _colAlign[col];
+}
+
+void SheetView::setColAlign(int col, int align) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colAlign[col] = align;
+}
+
+int SheetView::getColDecimalPlaces(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return -1;
+    return _colDecimalPlaces[col];
+}
+
+void SheetView::setColDecimalPlaces(int col, int places) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colDecimalPlaces[col] = places;
+}
+
+int SheetView::getColCurrency(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return 0;
+    return _colCurrency[col];
+}
+
+void SheetView::setColCurrency(int col, int val) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colCurrency[col] = val;
+}
+
+int SheetView::getColPercent(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return 0;
+    return _colPercent[col];
+}
+
+void SheetView::setColPercent(int col, int val) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colPercent[col] = val;
+}
+
+int SheetView::getColThousands(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return 0;
+    return _colThousands[col];
+}
+
+void SheetView::setColThousands(int col, int val) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colThousands[col] = val;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectiveAlign
+//
+// Get effective alignment for a cell: cell attribute > column default > type-based default.
+// Returns "left", "center", or "right".
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::getEffectiveAlign(int col, CxSheetCell *cell)
+{
+    // 1. Cell has align attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("align")) {
+        return cell->getAppAttributeString("align");
+    }
+
+    // 2. Column has default alignment
+    int colAlign = getColAlign(col);
+    if (colAlign == 1) return "left";
+    if (colAlign == 2) return "center";
+    if (colAlign == 3) return "right";
+
+    // 3. Type-based default: text = left, numbers = right
+    if (cell == NULL) {
+        return "left";
+    }
+    if (cell->getType() != CxSheetCell::TEXT) {
+        return "right";
+    }
+    return "left";
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectiveCurrency
+//
+// Get effective currency setting: cell attribute > column default > false.
+// Returns 1 if currency enabled, 0 otherwise.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getEffectiveCurrency(int col, CxSheetCell *cell)
+{
+    // 1. Cell has currency attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("currency")) {
+        return cell->getAppAttributeBool("currency", false) ? 1 : 0;
+    }
+
+    // 2. Column has currency default
+    int colCurrency = getColCurrency(col);
+    if (colCurrency == 1) return 1;  // on
+    if (colCurrency == 2) return 0;  // off
+
+    // 3. Default: no currency
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectivePercent
+//
+// Get effective percent setting: cell attribute > column default > false.
+// Returns 1 if percent enabled, 0 otherwise.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getEffectivePercent(int col, CxSheetCell *cell)
+{
+    // 1. Cell has percent attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("percent")) {
+        return cell->getAppAttributeBool("percent", false) ? 1 : 0;
+    }
+
+    // 2. Column has percent default
+    int colPercent = getColPercent(col);
+    if (colPercent == 1) return 1;  // on
+    if (colPercent == 2) return 0;  // off
+
+    // 3. Default: no percent
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectiveThousands
+//
+// Get effective thousands separator setting: cell attribute > column default > false.
+// Returns 1 if thousands enabled, 0 otherwise.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getEffectiveThousands(int col, CxSheetCell *cell)
+{
+    // 1. Cell has thousands attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("thousands")) {
+        return cell->getAppAttributeBool("thousands", false) ? 1 : 0;
+    }
+
+    // 2. Column has thousands default
+    int colThousands = getColThousands(col);
+    if (colThousands == 1) return 1;  // on
+    if (colThousands == 2) return 0;  // off
+
+    // 3. Default: no thousands separator
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectiveDecimalPlaces
+//
+// Get effective decimal places: cell attribute > column default > -1 (auto).
+// Returns -1 for auto (use %g), 0-10 for fixed decimal places.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::getEffectiveDecimalPlaces(int col, CxSheetCell *cell)
+{
+    // 1. Cell has decimalPlaces attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("decimalPlaces")) {
+        return cell->getAppAttributeInt("decimalPlaces", -1);
+    }
+
+    // 2. Column has decimal places default
+    int colDecimal = getColDecimalPlaces(col);
+    if (colDecimal >= 0) return colDecimal;
+
+    // 3. Default: auto
+    return -1;
 }

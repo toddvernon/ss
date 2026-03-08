@@ -89,6 +89,57 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_FormatColFit,
       NULL },
 
+    //--- modify-col-align- (column alignment defaults) ---------------------------
+    { "modify-col-align-left",
+      NULL,
+      "Set column default alignment to left",
+      0,
+      &SheetEditor::CMD_FormatColAlignLeft,
+      NULL },
+
+    { "modify-col-align-center",
+      NULL,
+      "Set column default alignment to center",
+      0,
+      &SheetEditor::CMD_FormatColAlignCenter,
+      NULL },
+
+    { "modify-col-align-right",
+      NULL,
+      "Set column default alignment to right",
+      0,
+      &SheetEditor::CMD_FormatColAlignRight,
+      NULL },
+
+    //--- modify-col-number- (column number format defaults) ----------------------
+    { "modify-col-number-currency",
+      NULL,
+      "Toggle column default currency format ($)",
+      0,
+      &SheetEditor::CMD_FormatColNumberCurrency,
+      NULL },
+
+    { "modify-col-number-decimal",
+      "<n>",
+      "Set column default decimal places (0-10)",
+      CMD_FLAG_NEEDS_ARG,
+      &SheetEditor::CMD_FormatColNumberDecimal,
+      NULL },
+
+    { "modify-col-number-percent",
+      NULL,
+      "Toggle column default percent format (%)",
+      0,
+      &SheetEditor::CMD_FormatColNumberPercent,
+      NULL },
+
+    { "modify-col-number-thousands",
+      NULL,
+      "Toggle column default thousands separators (,)",
+      0,
+      &SheetEditor::CMD_FormatColNumberThousands,
+      NULL },
+
     //--- modify-cell-align- (cell alignment) -------------------------------------
     { "modify-cell-align-left",
       NULL,

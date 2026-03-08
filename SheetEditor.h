@@ -150,6 +150,15 @@ class SheetEditor {
     void CMD_DeleteRow(CxString commandLine);
     void CMD_DeleteColumn(CxString commandLine);
 
+    // Column format commands
+    void CMD_FormatColAlignLeft(CxString commandLine);
+    void CMD_FormatColAlignCenter(CxString commandLine);
+    void CMD_FormatColAlignRight(CxString commandLine);
+    void CMD_FormatColNumberCurrency(CxString commandLine);
+    void CMD_FormatColNumberDecimal(CxString commandLine);
+    void CMD_FormatColNumberPercent(CxString commandLine);
+    void CMD_FormatColNumberThousands(CxString commandLine);
+
     ProgramMode programMode;
 
     CxScreen   *screen;

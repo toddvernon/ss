@@ -1498,7 +1498,8 @@ SheetEditor::getCellDisplayText(CxSheetCell *cell)
 
         case CxSheetCell::DOUBLE:
         {
-            CxString numStr = sheetView->formatNumber(cell->getDouble().value, cell);
+            int col = sheetModel->getCurrentPosition().getCol();
+            CxString numStr = sheetView->formatNumber(cell->getDouble().value, col, cell);
             // For currency, prepend "$ " (shown separately from number)
             if (cell->getAppAttributeBool("currency", false)) {
                 return CxString("$ ") + numStr;
@@ -3171,6 +3172,9 @@ SheetEditor::CMD_InsertColumn(CxString commandLine)
     // Shift column widths to match the data shift
     sheetView->shiftColumnWidths(col, 1);
 
+    // Shift column formats to match the data shift
+    sheetView->shiftColumnFormats(col, 1);
+
     // Use optimized redraw that skips row numbers
     sheetView->updateScreenForColumnChange();
     setMessage("Column inserted");
@@ -3215,7 +3219,391 @@ SheetEditor::CMD_DeleteColumn(CxString commandLine)
     // Shift column widths to match the data shift
     sheetView->shiftColumnWidths(col, -1);
 
+    // Shift column formats to match the data shift
+    sheetView->shiftColumnFormats(col, -1);
+
     // Use optimized redraw that skips row numbers
     sheetView->updateScreenForColumnChange();
     setMessage("Column deleted");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColAlignLeft
+//
+// Set left alignment as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColAlignLeft(CxString commandLine)
+{
+    (void)commandLine;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColAlign(col, 1);  // 1 = left
+    }
+
+    // Clear cell-level align attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("align")) {
+                cell->removeAppAttribute("align");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    setMessage("Column align: left");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColAlignCenter
+//
+// Set center alignment as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColAlignCenter(CxString commandLine)
+{
+    (void)commandLine;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColAlign(col, 2);  // 2 = center
+    }
+
+    // Clear cell-level align attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("align")) {
+                cell->removeAppAttribute("align");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    setMessage("Column align: center");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColAlignRight
+//
+// Set right alignment as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColAlignRight(CxString commandLine)
+{
+    (void)commandLine;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColAlign(col, 3);  // 3 = right
+    }
+
+    // Clear cell-level align attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("align")) {
+                cell->removeAppAttribute("align");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    setMessage("Column align: right");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColNumberCurrency
+//
+// Toggle currency format as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColNumberCurrency(CxString commandLine)
+{
+    (void)commandLine;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    // Toggle based on first column's current state
+    int currentVal = sheetView->getColCurrency(startCol);
+    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColCurrency(col, newVal);
+    }
+
+    // Clear cell-level currency attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("currency")) {
+                cell->removeAppAttribute("currency");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    setMessage(newVal == 1 ? "Column currency: on" : "Column currency: off");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColNumberDecimal
+//
+// Set decimal places as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColNumberDecimal(CxString commandLine)
+{
+    int places = atoi(commandLine.data());
+    if (places < 0) places = 0;
+    if (places > 10) places = 10;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColDecimalPlaces(col, places);
+    }
+
+    // Clear cell-level decimalPlaces attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("decimalPlaces")) {
+                cell->removeAppAttribute("decimalPlaces");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Column decimal places: %d", places);
+    setMessage(msg);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColNumberPercent
+//
+// Toggle percent format as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColNumberPercent(CxString commandLine)
+{
+    (void)commandLine;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    // Toggle based on first column's current state
+    int currentVal = sheetView->getColPercent(startCol);
+    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColPercent(col, newVal);
+    }
+
+    // Clear cell-level percent attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("percent")) {
+                cell->removeAppAttribute("percent");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    setMessage(newVal == 1 ? "Column percent: on" : "Column percent: off");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColNumberThousands
+//
+// Toggle thousands separator as column default for the current column or selected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColNumberThousands(CxString commandLine)
+{
+    (void)commandLine;
+
+    int startCol, endCol;
+
+    if (_rangeSelectActive) {
+        startCol = _rangeAnchor.getCol();
+        endCol = _rangeCurrent.getCol();
+        if (startCol > endCol) {
+            int tmp = startCol;
+            startCol = endCol;
+            endCol = tmp;
+        }
+    } else {
+        startCol = sheetModel->getCurrentPosition().getCol();
+        endCol = startCol;
+    }
+
+    // Toggle based on first column's current state
+    int currentVal = sheetView->getColThousands(startCol);
+    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColThousands(col, newVal);
+    }
+
+    // Clear cell-level thousands attribute from all cells in affected columns
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("thousands")) {
+                cell->removeAppAttribute("thousands");
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    setMessage(newVal == 1 ? "Column thousands: on" : "Column thousands: off");
 }

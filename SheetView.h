@@ -137,11 +137,33 @@ class SheetView {
     void shiftColumnWidths(int col, int direction);
     // shift column widths for insert (+1) or delete (-1) column operations
 
+    void shiftColumnFormats(int col, int direction);
+    // shift column format defaults for insert (+1) or delete (-1) column operations
+
     void updateVisibleTextmapCells(void);
     // redraw visible cells that have textmap rules (display-layer dependencies)
 
-    CxString formatNumber(double value, CxSheetCell *cell);
-    // format number with currency, decimals, percent, thousands based on cell attributes
+    CxString formatNumber(double value, int col, CxSheetCell *cell);
+    // format number with currency, decimals, percent, thousands based on column/cell attributes
+
+    // Column format default getters/setters
+    int getColAlign(int col);              // 0=unset, 1=left, 2=center, 3=right
+    void setColAlign(int col, int align);
+    int getColDecimalPlaces(int col);      // -1=unset
+    void setColDecimalPlaces(int col, int places);
+    int getColCurrency(int col);           // 0=unset, 1=on, 2=off
+    void setColCurrency(int col, int val);
+    int getColPercent(int col);            // 0=unset, 1=on, 2=off
+    void setColPercent(int col, int val);
+    int getColThousands(int col);          // 0=unset, 1=on, 2=off
+    void setColThousands(int col, int val);
+
+    // Cascaded attribute getters (cell overrides column, column overrides type-default)
+    CxString getEffectiveAlign(int col, CxSheetCell *cell);
+    int getEffectiveCurrency(int col, CxSheetCell *cell);
+    int getEffectivePercent(int col, CxSheetCell *cell);
+    int getEffectiveThousands(int col, CxSheetCell *cell);
+    int getEffectiveDecimalPlaces(int col, CxSheetCell *cell);  // -1 = auto
 
   private:
 
@@ -161,6 +183,14 @@ class SheetView {
 
     static const int MAX_COLUMNS = 702;  // A-ZZ (26 + 26*26)
     int _colWidths[MAX_COLUMNS];         // per-column widths (0 = use default)
+
+    // Column-level formatting defaults (cell attributes override these)
+    // Values: 0 = unset (use type-based default)
+    int _colAlign[MAX_COLUMNS];          // 0=unset, 1=left, 2=center, 3=right
+    int _colDecimalPlaces[MAX_COLUMNS];  // -1=unset, 0-10 = fixed decimal places
+    int _colCurrency[MAX_COLUMNS];       // 0=unset, 1=on, 2=off
+    int _colPercent[MAX_COLUMNS];        // 0=unset, 1=on, 2=off
+    int _colThousands[MAX_COLUMNS];      // 0=unset, 1=on, 2=off
 
     int _scrollRowOffset;   // first visible data row (0-based)
     int _scrollColOffset;   // first visible data column (0-based)
@@ -206,8 +236,8 @@ class SheetView {
     int isCellInSelectionRange(int row, int col);
     // check if cell is within the selection range (EDIT mode)
 
-    CxString formatCellValue(CxSheetCell *cell, int width);
-    // format cell contents for display
+    CxString formatCellValue(CxSheetCell *cell, int col, int width);
+    // format cell contents for display (col needed for column format defaults)
 
     CxString formatSymbolFill(CxString symbolType, int width);
     // format symbol fill cells (box drawing)
@@ -218,7 +248,7 @@ class SheetView {
     int isCellOccupied(int dataRow, int dataCol);
     // check if a cell blocks text overflow (has content, symbolFill, or textmap)
 
-    int getCellContentWidth(CxSheetCell *cell);
+    int getCellContentWidth(CxSheetCell *cell, int col);
     // get the untruncated display width of a cell's formatted content
 
     CxString getCellAlignment(CxSheetCell *cell);
