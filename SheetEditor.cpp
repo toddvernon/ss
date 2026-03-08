@@ -1209,7 +1209,35 @@ SheetEditor::screenResizeCallback(void)
 void
 SheetEditor::CMD_Quit(CxString commandLine)
 {
+    (void)commandLine;
     _quitRequested = 1;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_QuitSave
+//
+// Save and quit.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_QuitSave(CxString commandLine)
+{
+    (void)commandLine;
+    CMD_Save("");
+    CMD_Quit("");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_QuitWithoutSave
+//
+// Quit without saving.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_QuitWithoutSave(CxString commandLine)
+{
+    (void)commandLine;
+    CMD_Quit("");
 }
 
 

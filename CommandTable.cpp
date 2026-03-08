@@ -185,6 +185,21 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_DeleteColumn,
       NULL },
 
+    //--- quit- ---------------------------------------------------------------
+    { "quit-save",
+      NULL,
+      "Save and quit",
+      0,
+      &SheetEditor::CMD_QuitSave,
+      NULL },
+
+    { "quit-nosave",
+      NULL,
+      "Quit without saving",
+      0,
+      &SheetEditor::CMD_QuitWithoutSave,
+      NULL },
+
     //--- end -----------------------------------------------------------------
     { NULL, NULL, NULL, 0, NULL, NULL }
 };
