@@ -1304,7 +1304,9 @@ SheetEditor::autoFitColumnWidth(void)
             CxSheetCell *cell = sheetModel->getCellPtr(coord);
             if (cell != NULL) {
                 CxString text = getCellDisplayText(cell);
-                int len = text.length();
+                CxUTFString utfText;
+                utfText.fromCxString(text, 8);
+                int len = utfText.displayWidth();
                 if (len > maxWidth) {
                     maxWidth = len;
                 }
@@ -2062,7 +2064,10 @@ SheetEditor::updateDataEntryDisplay(void)
     commandLineView->setDimMode(0);
     commandLineView->setText(display);
     commandLineView->updateScreen();
-    commandLineView->placeCursorAt(prefixLen + _dataEntryCursorPos);
+
+    // Convert character position to display column (for UTF-8 with wide characters)
+    int displayCol = _dataEntryBuffer.displayColumnOfChar(_dataEntryCursorPos);
+    commandLineView->placeCursorAt(prefixLen + displayCol);
 }
 
 
@@ -2227,16 +2232,20 @@ void
 SheetEditor::updateCellHuntDisplay(void)
 {
     // Build the formula string with the reference at the insert position
-    CxString bufferBytes = _dataEntryBuffer.toBytes();
     CxString ref = buildCellHuntReference();
 
-    // Create display: formula prefix + buffer up to insert pos + reference + rest of buffer
-    CxString beforeInsert = bufferBytes.subString(0, _cellHuntInsertPos);
-    CxString afterInsert = "";
-    if (_cellHuntInsertPos < (int)bufferBytes.length()) {
-        afterInsert = bufferBytes.subString(_cellHuntInsertPos,
-                                            bufferBytes.length() - _cellHuntInsertPos);
+    // Split buffer at insert position using character-based operations (not byte-based)
+    // _cellHuntInsertPos is a character index, so use CxUTFString subString
+    int bufferLen = _dataEntryBuffer.charCount();
+    CxUTFString beforePart = _dataEntryBuffer.subString(0, _cellHuntInsertPos);
+    CxUTFString afterPart;
+    if (_cellHuntInsertPos < bufferLen) {
+        afterPart = _dataEntryBuffer.subString(_cellHuntInsertPos, bufferLen - _cellHuntInsertPos);
     }
+
+    // Convert to bytes for display string construction
+    CxString beforeInsert = beforePart.toBytes();
+    CxString afterInsert = afterPart.toBytes();
 
     CxString display = CxString("formula: ") + beforeInsert + ref + afterInsert;
 
@@ -2244,8 +2253,9 @@ SheetEditor::updateCellHuntDisplay(void)
     commandLineView->setText(display);
     commandLineView->updateScreen();
 
-    // Place cursor after the reference preview
-    commandLineView->placeCursorAt(9 + _cellHuntInsertPos + ref.length());
+    // Place cursor after the reference preview - use display width for proper positioning
+    int displayColBeforeInsert = beforePart.displayWidth();
+    commandLineView->placeCursorAt(9 + displayColBeforeInsert + ref.length());
 }
 
 
