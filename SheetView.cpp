@@ -547,6 +547,12 @@ SheetView::deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCo
     // Reset scroll region to full screen
     CxScreen::resetScrollRegion();
 
+    // Redraw all row numbers (highlight moved with scroll, need to fix)
+    drawRowNumbers();
+
+    // Redraw column headers (cursor column highlight may need updating)
+    drawColumnHeaders();
+
     // Redraw cursor cells (old and new positions)
     CxSList<CxSheetCellCoordinate> cells;
     cells.append(oldPos);
@@ -1043,8 +1049,8 @@ SheetView::formatNumber(double value, int col, CxSheetCell *cell)
     // Determine decimal places
     int useDecimalPlaces = decimalPlaces;
     if (isCurrency && !hasDecimalPlaces) {
-        // Currency defaults to 2 decimal places if not explicitly set
-        useDecimalPlaces = 2;
+        // Currency defaults to 0 decimal places if not explicitly set
+        useDecimalPlaces = 0;
     } else if (hasThousands && !hasDecimalPlaces) {
         // Thousands with fractional part: ensure at least 2 decimal places
         double intPart;

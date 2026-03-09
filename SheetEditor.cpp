@@ -2137,7 +2137,8 @@ SheetEditor::commitDataEntry(void)
             if (!result.hasThousands && oldHasThousands) {
                 cellPtr->setAppAttribute("thousands", true);
             }
-            if (oldHasDecimalPlaces && result.dateFormat.length() == 0) {
+            if (oldHasDecimalPlaces && result.dateFormat.length() == 0
+                && !result.hasCurrency) {
                 cellPtr->setAppAttribute("decimalPlaces", oldDecimalPlaces);
             }
             if (oldHasAlign) {
