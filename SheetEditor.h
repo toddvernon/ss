@@ -70,7 +70,8 @@ class SheetEditor {
     enum CommandInputState {
         CMD_INPUT_IDLE,         // not in command input mode
         CMD_INPUT_COMMAND,      // entering command name
-        CMD_INPUT_ARGUMENT      // entering command argument
+        CMD_INPUT_ARGUMENT,     // entering command argument
+        CMD_INPUT_COLOR_PICKER  // selecting color from palette
     };
 
     enum DataEntryMode {
@@ -159,6 +160,19 @@ class SheetEditor {
     void CMD_FormatColNumberPercent(CxString commandLine);
     void CMD_FormatColNumberThousands(CxString commandLine);
 
+    // Cell/column color commands
+    void CMD_FormatCellColorForeground(CxString commandLine);
+    void CMD_FormatCellColorBackground(CxString commandLine);
+    void CMD_FormatColColorForeground(CxString commandLine);
+    void CMD_FormatColColorBackground(CxString commandLine);
+
+    // Color picker methods
+    void enterColorPickerMode(int isForeground, int isColumnDefault);
+    void focusColorPicker(CxKeyAction keyAction);
+    void updateColorPickerDisplay(void);
+    void applySelectedColor(void);
+    void exitColorPickerMode(void);
+
     ProgramMode programMode;
 
     CxScreen   *screen;
@@ -208,6 +222,12 @@ class SheetEditor {
     CxSheetCellCoordinate _clipboardAnchor;   // top-left of original copied range
     int _clipboardRows;                       // dimensions of clipboard content
     int _clipboardCols;
+
+    // color picker state
+    int _colorPickerIndex;           // current selection in palette
+    int _colorPickerScrollOffset;    // scroll position for display
+    int _colorPickerIsForeground;    // 1 = foreground, 0 = background
+    int _colorPickerIsColumn;        // 1 = column default, 0 = cell color
 
     // helper methods
     void enterCommandLineMode(void);

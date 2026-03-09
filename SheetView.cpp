@@ -61,6 +61,8 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
         _colCurrency[i] = 0;        // 0 = unset
         _colPercent[i] = 0;         // 0 = unset
         _colThousands[i] = 0;       // 0 = unset
+        _colFgColor[i] = "";        // "" = unset (terminal default)
+        _colBgColor[i] = "";        // "" = unset (terminal default)
     }
 }
 
@@ -790,10 +792,36 @@ SheetView::drawRow(int screenRow, int dataRow)
                 break;
             case HIGHLIGHT_NONE:
             default:
-                _defaults->applyCellColors(screen);
+            {
+                // Apply cell/column colors (cascade: cell > column > default)
+                CxSheetCell *cellPtr = sheetModel->getCellPtr(coord);
+                CxString fgColorStr = getEffectiveFgColor(dataCols[i], cellPtr);
+                CxString bgColorStr = getEffectiveBgColor(dataCols[i], cellPtr);
+
+                // Apply foreground color if set
+                if (fgColorStr.length() > 0 && fgColorStr.index("NONE") < 0) {
+                    CxColor *fgColor = SpreadsheetDefaults::parseColor(fgColorStr, 0);
+                    if (fgColor != NULL) {
+                        screen->setForegroundColor(fgColor);
+                        delete fgColor;
+                    }
+                } else {
+                    _defaults->applyCellColors(screen);
+                }
+
+                // Apply background color if set
+                if (bgColorStr.length() > 0 && bgColorStr.index("NONE") < 0) {
+                    CxColor *bgColor = SpreadsheetDefaults::parseColor(bgColorStr, 1);
+                    if (bgColor != NULL) {
+                        screen->setBackgroundColor(bgColor);
+                        delete bgColor;
+                    }
+                }
+
                 printf("%s", content.data());
                 _defaults->resetColors(screen);
-                break;
+            }
+            break;
         }
     }
 }
@@ -860,10 +888,35 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 
         case HIGHLIGHT_NONE:
         default:
-            _defaults->applyCellColors(screen);
+        {
+            // Apply cell/column colors (cascade: cell > column > default)
+            CxString fgColorStr = getEffectiveFgColor(dataCol, cell);
+            CxString bgColorStr = getEffectiveBgColor(dataCol, cell);
+
+            // Apply foreground color if set
+            if (fgColorStr.length() > 0 && fgColorStr.index("NONE") < 0) {
+                CxColor *fgColor = SpreadsheetDefaults::parseColor(fgColorStr, 0);
+                if (fgColor != NULL) {
+                    screen->setForegroundColor(fgColor);
+                    delete fgColor;
+                }
+            } else {
+                _defaults->applyCellColors(screen);
+            }
+
+            // Apply background color if set
+            if (bgColorStr.length() > 0 && bgColorStr.index("NONE") < 0) {
+                CxColor *bgColor = SpreadsheetDefaults::parseColor(bgColorStr, 1);
+                if (bgColor != NULL) {
+                    screen->setBackgroundColor(bgColor);
+                    delete bgColor;
+                }
+            }
+
             printf("%s", content.data());
             _defaults->resetColors(screen);
-            break;
+        }
+        break;
     }
 }
 
@@ -2224,6 +2277,24 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
                     _colThousands[col] = ((CxJSONUTFBoolean *)tb)->get() ? 1 : 2;
                 }
             }
+
+            // Load fgColor (color string)
+            CxJSONUTFMember *fgMember = colObj->find("fgColor");
+            if (fgMember != NULL) {
+                CxJSONUTFBase *fgb = fgMember->object();
+                if (fgb != NULL && fgb->type() == CxJSONUTFBase::STRING) {
+                    _colFgColor[col] = ((CxJSONUTFString *)fgb)->get().toBytes();
+                }
+            }
+
+            // Load bgColor (color string)
+            CxJSONUTFMember *bgMember = colObj->find("bgColor");
+            if (bgMember != NULL) {
+                CxJSONUTFBase *bgb = bgMember->object();
+                if (bgb != NULL && bgb->type() == CxJSONUTFBase::STRING) {
+                    _colBgColor[col] = ((CxJSONUTFString *)bgb)->get().toBytes();
+                }
+            }
         }
     }
 }
@@ -2243,12 +2314,13 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
         return;
     }
 
-    // Check if any columns have custom settings (width or format)
+    // Check if any columns have custom settings (width, format, or color)
     int hasCustomSettings = 0;
     for (int col = 0; col < MAX_COLUMNS; col++) {
         if (_colWidths[col] != 0 || _colAlign[col] != 0 ||
             _colDecimalPlaces[col] >= 0 || _colCurrency[col] != 0 ||
-            _colPercent[col] != 0 || _colThousands[col] != 0) {
+            _colPercent[col] != 0 || _colThousands[col] != 0 ||
+            _colFgColor[col].length() > 0 || _colBgColor[col].length() > 0) {
             hasCustomSettings = 1;
             break;
         }
@@ -2285,9 +2357,11 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
         int hasCurrency = (_colCurrency[col] != 0);
         int hasPercent = (_colPercent[col] != 0);
         int hasThousands = (_colThousands[col] != 0);
+        int hasFgColor = (_colFgColor[col].length() > 0);
+        int hasBgColor = (_colBgColor[col].length() > 0);
 
         if (!hasWidth && !hasAlign && !hasDecimal && !hasCurrency &&
-            !hasPercent && !hasThousands) {
+            !hasPercent && !hasThousands && !hasFgColor && !hasBgColor) {
             continue;  // skip columns with no custom settings
         }
 
@@ -2331,6 +2405,18 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
         if (hasThousands) {
             CxJSONUTFBoolean *thouVal = new CxJSONUTFBoolean(_colThousands[col] == 1);
             colObj->append(new CxJSONUTFMember("thousands", thouVal));
+        }
+
+        // Add fgColor
+        if (hasFgColor) {
+            CxJSONUTFString *fgStr = new CxJSONUTFString(_colFgColor[col].data());
+            colObj->append(new CxJSONUTFMember("fgColor", fgStr));
+        }
+
+        // Add bgColor
+        if (hasBgColor) {
+            CxJSONUTFString *bgStr = new CxJSONUTFString(_colBgColor[col].data());
+            colObj->append(new CxJSONUTFMember("bgColor", bgStr));
         }
 
         CxJSONUTFMember *member = new CxJSONUTFMember(colName.data(), colObj);
@@ -2566,6 +2652,8 @@ SheetView::shiftColumnFormats(int col, int direction)
             _colCurrency[i] = _colCurrency[i - 1];
             _colPercent[i] = _colPercent[i - 1];
             _colThousands[i] = _colThousands[i - 1];
+            _colFgColor[i] = _colFgColor[i - 1];
+            _colBgColor[i] = _colBgColor[i - 1];
         }
         // New column gets unset values
         _colAlign[col] = 0;
@@ -2573,6 +2661,8 @@ SheetView::shiftColumnFormats(int col, int direction)
         _colCurrency[col] = 0;
         _colPercent[col] = 0;
         _colThousands[col] = 0;
+        _colFgColor[col] = "";
+        _colBgColor[col] = "";
     } else if (direction < 0) {
         // Delete: shift left from col to end
         for (int i = col; i < MAX_COLUMNS - 1; i++) {
@@ -2581,6 +2671,8 @@ SheetView::shiftColumnFormats(int col, int direction)
             _colCurrency[i] = _colCurrency[i + 1];
             _colPercent[i] = _colPercent[i + 1];
             _colThousands[i] = _colThousands[i + 1];
+            _colFgColor[i] = _colFgColor[i + 1];
+            _colBgColor[i] = _colBgColor[i + 1];
         }
         // Last column gets unset values
         _colAlign[MAX_COLUMNS - 1] = 0;
@@ -2588,6 +2680,8 @@ SheetView::shiftColumnFormats(int col, int direction)
         _colCurrency[MAX_COLUMNS - 1] = 0;
         _colPercent[MAX_COLUMNS - 1] = 0;
         _colThousands[MAX_COLUMNS - 1] = 0;
+        _colFgColor[MAX_COLUMNS - 1] = "";
+        _colBgColor[MAX_COLUMNS - 1] = "";
     }
 }
 
@@ -2643,6 +2737,26 @@ int SheetView::getColThousands(int col) {
 void SheetView::setColThousands(int col, int val) {
     if (col < 0 || col >= MAX_COLUMNS) return;
     _colThousands[col] = val;
+}
+
+CxString SheetView::getColFgColorString(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return "";
+    return _colFgColor[col];
+}
+
+void SheetView::setColFgColor(int col, CxString colorStr) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colFgColor[col] = colorStr;
+}
+
+CxString SheetView::getColBgColorString(int col) {
+    if (col < 0 || col >= MAX_COLUMNS) return "";
+    return _colBgColor[col];
+}
+
+void SheetView::setColBgColor(int col, CxString colorStr) {
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colBgColor[col] = colorStr;
 }
 
 
@@ -2769,4 +2883,50 @@ SheetView::getEffectiveDecimalPlaces(int col, CxSheetCell *cell)
 
     // 3. Default: auto
     return -1;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectiveFgColor
+//
+// Get effective foreground color: cell attribute > column default > "" (terminal default).
+// Returns "" for terminal default, else color string like "RGB:255,0,0".
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::getEffectiveFgColor(int col, CxSheetCell *cell)
+{
+    // 1. Cell has fgColor attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("fgColor")) {
+        return cell->getAppAttributeString("fgColor");
+    }
+
+    // 2. Column has fgColor default
+    CxString colFg = getColFgColorString(col);
+    if (colFg.length() > 0) return colFg;
+
+    // 3. Default: terminal default
+    return "";
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getEffectiveBgColor
+//
+// Get effective background color: cell attribute > column default > "" (terminal default).
+// Returns "" for terminal default, else color string like "RGB:255,0,0".
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetView::getEffectiveBgColor(int col, CxSheetCell *cell)
+{
+    // 1. Cell has bgColor attribute - use it
+    if (cell != NULL && cell->hasAppAttribute("bgColor")) {
+        return cell->getAppAttributeString("bgColor");
+    }
+
+    // 2. Column has bgColor default
+    CxString colBg = getColBgColorString(col);
+    if (colBg.length() > 0) return colBg;
+
+    // 3. Default: terminal default
+    return "";
 }

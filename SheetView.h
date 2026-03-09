@@ -172,6 +172,16 @@ class SheetView {
     int getEffectiveThousands(int col, CxSheetCell *cell);
     int getEffectiveDecimalPlaces(int col, CxSheetCell *cell);  // -1 = auto
 
+    // Column color getters/setters (color string like "RGB:255,0,0" or "" for none)
+    CxString getColFgColorString(int col);
+    void setColFgColor(int col, CxString colorStr);
+    CxString getColBgColorString(int col);
+    void setColBgColor(int col, CxString colorStr);
+
+    // Cascaded color getters (cell overrides column) - returns color string or ""
+    CxString getEffectiveFgColor(int col, CxSheetCell *cell);
+    CxString getEffectiveBgColor(int col, CxSheetCell *cell);
+
   private:
 
     CxScreen *screen;
@@ -198,6 +208,8 @@ class SheetView {
     int _colCurrency[MAX_COLUMNS];       // 0=unset, 1=on, 2=off
     int _colPercent[MAX_COLUMNS];        // 0=unset, 1=on, 2=off
     int _colThousands[MAX_COLUMNS];      // 0=unset, 1=on, 2=off
+    CxString _colFgColor[MAX_COLUMNS];   // "" = unset (terminal default), else color string
+    CxString _colBgColor[MAX_COLUMNS];   // "" = unset (terminal default), else color string
 
     int _scrollRowOffset;   // first visible data row (0-based)
     int _scrollColOffset;   // first visible data column (0-based)

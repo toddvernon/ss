@@ -54,6 +54,10 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _rangeSelectActive(0)
 , _clipboardRows(0)
 , _clipboardCols(0)
+, _colorPickerIndex(0)
+, _colorPickerScrollOffset(0)
+, _colorPickerIsForeground(0)
+, _colorPickerIsColumn(0)
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -695,6 +699,10 @@ SheetEditor::handleCommandInput(CxKeyAction keyAction)
             handleArgumentModeInput(keyAction);
             break;
 
+        case CMD_INPUT_COLOR_PICKER:
+            focusColorPicker(keyAction);
+            break;
+
         default:
             break;
     }
@@ -895,6 +903,18 @@ void
 SheetEditor::selectCommand(CommandEntry *cmd)
 {
     _currentCommand = cmd;
+
+    // Color picker commands - enter color picker mode
+    if (cmd->flags & CMD_FLAG_COLOR_PICKER_FG) {
+        int isColumn = (cmd->flags & CMD_FLAG_COLUMN_DEFAULT) ? 1 : 0;
+        enterColorPickerMode(1, isColumn);  // foreground
+        return;
+    }
+    if (cmd->flags & CMD_FLAG_COLOR_PICKER_BG) {
+        int isColumn = (cmd->flags & CMD_FLAG_COLUMN_DEFAULT) ? 1 : 0;
+        enterColorPickerMode(0, isColumn);  // background
+        return;
+    }
 
     if (cmd->flags & CMD_FLAG_NEEDS_ARG) {
         // Command needs an argument - switch to argument mode
@@ -3824,4 +3844,359 @@ SheetEditor::CMD_FormatColNumberThousands(CxString commandLine)
 
     sheetView->updateScreen();
     setMessage(newVal == 1 ? "Column thousands: on" : "Column thousands: off");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellColorForeground
+//
+// Enter color picker mode for cell foreground color.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellColorForeground(CxString commandLine)
+{
+    (void)commandLine;
+    // enterColorPickerMode is called from selectCommand when flag is detected
+    // This handler is called when color is selected to apply it
+    applySelectedColor();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatCellColorBackground
+//
+// Enter color picker mode for cell background color.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatCellColorBackground(CxString commandLine)
+{
+    (void)commandLine;
+    applySelectedColor();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColColorForeground
+//
+// Enter color picker mode for column default foreground color.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColColorForeground(CxString commandLine)
+{
+    (void)commandLine;
+    applySelectedColor();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FormatColColorBackground
+//
+// Enter color picker mode for column default background color.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FormatColColorBackground(CxString commandLine)
+{
+    (void)commandLine;
+    applySelectedColor();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::enterColorPickerMode
+//
+// Enter color picker mode. isForeground: 1=foreground, 0=background.
+// isColumnDefault: 1=column default, 0=cell-level.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::enterColorPickerMode(int isForeground, int isColumnDefault)
+{
+    _cmdInputState = CMD_INPUT_COLOR_PICKER;
+    _colorPickerIsForeground = isForeground;
+    _colorPickerIsColumn = isColumnDefault;
+    _colorPickerIndex = 0;
+    _colorPickerScrollOffset = 0;
+
+    updateColorPickerDisplay();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::focusColorPicker
+//
+// Handle keyboard input in color picker mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::focusColorPicker(CxKeyAction keyAction)
+{
+    int action = keyAction.actionType();
+
+    // Get palette size
+    int paletteSize = _colorPickerIsForeground ?
+        spreadsheetDefaults->getFgPaletteSize() :
+        spreadsheetDefaults->getBgPaletteSize();
+
+    // ESC - cancel and exit
+    if (action == CxKeyAction::COMMAND) {
+        exitColorPickerMode();
+        return;
+    }
+
+    // ENTER - apply selected color
+    if (action == CxKeyAction::NEWLINE) {
+        applySelectedColor();
+        exitColorPickerMode();
+        return;
+    }
+
+    // Arrow keys - navigate palette
+    if (action == CxKeyAction::CURSOR) {
+        CxString tag = keyAction.tag();
+
+        if (tag == "<arrow-left>") {
+            if (_colorPickerIndex > 0) {
+                _colorPickerIndex--;
+                updateColorPickerDisplay();
+            }
+        } else if (tag == "<arrow-right>") {
+            if (_colorPickerIndex < paletteSize - 1) {
+                _colorPickerIndex++;
+                updateColorPickerDisplay();
+            }
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::updateColorPickerDisplay
+//
+// Update the command line to show the color picker swatches.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::updateColorPickerDisplay(void)
+{
+    int paletteSize = _colorPickerIsForeground ?
+        spreadsheetDefaults->getFgPaletteSize() :
+        spreadsheetDefaults->getBgPaletteSize();
+
+    // Calculate how many swatches fit on screen
+    // For bg: each swatch is 6 chars wide ([xxxx] or [none])
+    // For fg: each swatch is 6 chars wide (1234 + space, or none + space)
+    int swatchWidth = _colorPickerIsForeground ? 5 : 6;
+    int labelWidth = _colorPickerIsForeground ? 11 : 11;  // "fg color: " or "bg color: "
+    int screenWidth = screen->cols();
+    int availableWidth = screenWidth - labelWidth - 2;  // leave margin
+    int maxSwatches = availableWidth / swatchWidth;
+    if (maxSwatches < 1) maxSwatches = 1;
+
+    // Adjust scroll offset to keep selection visible
+    if (_colorPickerIndex < _colorPickerScrollOffset) {
+        _colorPickerScrollOffset = _colorPickerIndex;
+    } else if (_colorPickerIndex >= _colorPickerScrollOffset + maxSwatches) {
+        _colorPickerScrollOffset = _colorPickerIndex - maxSwatches + 1;
+    }
+
+    // Build display string with color codes
+    CxString label = _colorPickerIsForeground ? "fg color: " : "bg color: ";
+
+    // Position cursor and start output
+    commandLineView->setDimMode(0);
+    CxScreen::placeCursor(screen->rows() - 2, 0);
+    CxScreen::clearScreenFromCursorToEndOfLine();
+
+    // Output label
+    spreadsheetDefaults->applyCommandLineEditColors(screen);
+    printf("%s", label.data());
+
+    // Output swatches
+    int endIndex = _colorPickerScrollOffset + maxSwatches;
+    if (endIndex > paletteSize) endIndex = paletteSize;
+
+    for (int i = _colorPickerScrollOffset; i < endIndex; i++) {
+        CxColor *color = _colorPickerIsForeground ?
+            spreadsheetDefaults->getFgPaletteColor(i) :
+            spreadsheetDefaults->getBgPaletteColor(i);
+        CxString colorStr = _colorPickerIsForeground ?
+            spreadsheetDefaults->getFgPaletteString(i) :
+            spreadsheetDefaults->getBgPaletteString(i);
+
+        // Check if this is "none" (ANSI:NONE or contains NONE)
+        int isNone = (colorStr.index("NONE") >= 0);
+        int isSelected = (i == _colorPickerIndex);
+
+        if (_colorPickerIsForeground) {
+            // Foreground colors: show "1234" or "none" in that color
+            if (isSelected) {
+                // Inverse video for selection - use color as background
+                if (isNone) {
+                    screen->resetForegroundColor();
+                    screen->resetBackgroundColor();
+                    printf("[none]");
+                } else {
+                    // Create matching background color from foreground
+                    screen->setBackgroundColor(color);
+                    screen->resetForegroundColor();
+                    printf(" 1234 ");
+                }
+                spreadsheetDefaults->resetColors(screen);
+            } else {
+                if (isNone) {
+                    spreadsheetDefaults->applyCommandLineEditColors(screen);
+                    printf("none ");
+                } else {
+                    screen->setForegroundColor(color);
+                    printf("1234 ");
+                    spreadsheetDefaults->resetColors(screen);
+                }
+            }
+        } else {
+            // Background colors: show color blocks
+            if (isSelected) {
+                // Selection indicator: brackets
+                spreadsheetDefaults->applyCommandLineEditColors(screen);
+                printf("[");
+                if (isNone) {
+                    printf("none");
+                } else {
+                    screen->setBackgroundColor(color);
+                    printf("    ");
+                    spreadsheetDefaults->resetColors(screen);
+                }
+                spreadsheetDefaults->applyCommandLineEditColors(screen);
+                printf("]");
+            } else {
+                if (isNone) {
+                    spreadsheetDefaults->applyCommandLineEditColors(screen);
+                    printf(" none ");
+                } else {
+                    printf(" ");
+                    screen->setBackgroundColor(color);
+                    printf("    ");
+                    spreadsheetDefaults->resetColors(screen);
+                    printf(" ");
+                }
+            }
+        }
+    }
+
+    // Reset colors
+    spreadsheetDefaults->resetColors(screen);
+
+    // Hide cursor during picker mode
+    screen->hideCursor();
+
+    fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::applySelectedColor
+//
+// Apply the selected color to the current cell(s) or column(s).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::applySelectedColor(void)
+{
+    CxString colorStr = _colorPickerIsForeground ?
+        spreadsheetDefaults->getFgPaletteString(_colorPickerIndex) :
+        spreadsheetDefaults->getBgPaletteString(_colorPickerIndex);
+
+    // Check if this is a "none" color (ANSI:NONE or similar)
+    int isNone = (colorStr.index("NONE") >= 0);
+    const char *attrName = _colorPickerIsForeground ? "fgColor" : "bgColor";
+
+    if (_colorPickerIsColumn) {
+        // Apply to column default(s)
+        int startCol, endCol;
+
+        if (_rangeSelectActive) {
+            startCol = _rangeAnchor.getCol();
+            endCol = _rangeCurrent.getCol();
+            if (startCol > endCol) {
+                int tmp = startCol;
+                startCol = endCol;
+                endCol = tmp;
+            }
+        } else {
+            startCol = sheetModel->getCurrentPosition().getCol();
+            endCol = startCol;
+        }
+
+        for (int col = startCol; col <= endCol; col++) {
+            if (_colorPickerIsForeground) {
+                sheetView->setColFgColor(col, isNone ? CxString("") : colorStr);
+            } else {
+                sheetView->setColBgColor(col, isNone ? CxString("") : colorStr);
+            }
+        }
+
+        // Clear range selection
+        if (_rangeSelectActive) {
+            _rangeSelectActive = 0;
+            sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+        }
+
+        setMessage(isNone ? "Column color cleared" : "Column color set");
+    } else {
+        // Apply to cell(s)
+        int startRow, endRow, startCol, endCol;
+
+        if (_rangeSelectActive) {
+            startRow = _rangeAnchor.getRow();
+            endRow = _rangeCurrent.getRow();
+            startCol = _rangeAnchor.getCol();
+            endCol = _rangeCurrent.getCol();
+            if (startRow > endRow) { int t = startRow; startRow = endRow; endRow = t; }
+            if (startCol > endCol) { int t = startCol; startCol = endCol; endCol = t; }
+        } else {
+            CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+            startRow = endRow = pos.getRow();
+            startCol = endCol = pos.getCol();
+        }
+
+        for (int row = startRow; row <= endRow; row++) {
+            for (int col = startCol; col <= endCol; col++) {
+                CxSheetCellCoordinate coord(row, col);
+                CxSheetCell *cell = sheetModel->getCellPtr(coord);
+
+                // Create cell if it doesn't exist
+                if (cell == NULL) {
+                    sheetModel->setCell(coord, CxSheetCell());
+                    cell = sheetModel->getCellPtr(coord);
+                }
+
+                if (cell != NULL) {
+                    if (isNone) {
+                        // Remove color attribute (use default)
+                        cell->removeAppAttribute(attrName);
+                    } else {
+                        cell->setAppAttribute(attrName, colorStr.data());
+                    }
+                }
+            }
+        }
+
+        // Clear range selection
+        if (_rangeSelectActive) {
+            _rangeSelectActive = 0;
+            sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+        }
+
+        setMessage(isNone ? "Cell color cleared" : "Cell color set");
+    }
+
+    sheetView->updateScreen();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::exitColorPickerMode
+//
+// Exit color picker mode and return to normal mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::exitColorPickerMode(void)
+{
+    _cmdInputState = CMD_INPUT_IDLE;
+    exitCommandLineMode();
 }

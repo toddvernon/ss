@@ -236,6 +236,36 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_DeleteColumn,
       NULL },
 
+    //--- modify-cell-color- (cell color) ----------------------------------------
+    { "modify-cell-color-foreground",
+      NULL,
+      "Set cell text color",
+      CMD_FLAG_COLOR_PICKER_FG,
+      &SheetEditor::CMD_FormatCellColorForeground,
+      NULL },
+
+    { "modify-cell-color-background",
+      NULL,
+      "Set cell background color",
+      CMD_FLAG_COLOR_PICKER_BG,
+      &SheetEditor::CMD_FormatCellColorBackground,
+      NULL },
+
+    //--- modify-col-color- (column color defaults) -----------------------------
+    { "modify-col-color-foreground",
+      NULL,
+      "Set column default text color",
+      CMD_FLAG_COLOR_PICKER_FG | CMD_FLAG_COLUMN_DEFAULT,
+      &SheetEditor::CMD_FormatColColorForeground,
+      NULL },
+
+    { "modify-col-color-background",
+      NULL,
+      "Set column default background color",
+      CMD_FLAG_COLOR_PICKER_BG | CMD_FLAG_COLUMN_DEFAULT,
+      &SheetEditor::CMD_FormatColColorBackground,
+      NULL },
+
     //--- quit- ---------------------------------------------------------------
     { "quit-save",
       NULL,

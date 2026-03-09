@@ -22,6 +22,9 @@
 #define CMD_FLAG_NEEDS_ARG      0x01    // command requires an argument
 #define CMD_FLAG_OPTIONAL_ARG   0x02    // argument is optional
 #define CMD_FLAG_SYMBOL_ARG     0x04    // argument is a UTF symbol (uses child completer)
+#define CMD_FLAG_COLOR_PICKER_FG 0x08   // command uses foreground color picker
+#define CMD_FLAG_COLOR_PICKER_BG 0x10   // command uses background color picker
+#define CMD_FLAG_COLUMN_DEFAULT 0x20    // command operates on column defaults (not cells)
 
 //-------------------------------------------------------------------------------------------------
 // Command handler function type

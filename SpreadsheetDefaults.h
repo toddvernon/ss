@@ -18,6 +18,7 @@
 
 #include <cx/base/string.h>
 #include <cx/base/file.h>
+#include <cx/base/slist.h>
 #include <cx/json/json_factory.h>
 #include <cx/screen/color.h>
 
@@ -97,6 +98,17 @@ public:
     void writeDefaults(CxString fname);
     // write out default values to ~/.ssrc
 
+    // Color palette accessors
+    int getFgPaletteSize(void);
+    int getBgPaletteSize(void);
+    CxColor *getFgPaletteColor(int index);  // CxColor* for rendering
+    CxColor *getBgPaletteColor(int index);  // CxColor* for rendering
+    CxString getFgPaletteString(int index); // color string for serialization
+    CxString getBgPaletteString(int index); // color string for serialization
+
+    // Color string parser - converts "RGB:r,g,b" or "XTERM256:name" to CxColor*
+    static CxColor *parseColor(CxString colorName, int isBackground);
+
 private:
 
     int readFile(CxString fname);
@@ -105,8 +117,6 @@ private:
     int parseBooleanField(CxJSONObject *obj, const char *fieldName, int *target);
     int parseColorFromJSON(CxJSONObject *obj, const char *fieldName,
                            CxColor **target, int isBackground);
-
-    static CxColor *parseColor(CxString colorName, int isBackground);
 
     CxString _data;
 
@@ -154,6 +164,16 @@ private:
     CxColor *_formulaRefBackgroundColor;
 
     CxJSONBase *_baseNode;
+
+    // Color palettes - stores CxColor* objects and color strings
+    // Color strings like "RGB:255,128,0" or "XTERM256:NONE" for serialization
+    CxSList<CxColor *> _fgPalette;      // foreground CxColor* objects
+    CxSList<CxColor *> _bgPalette;      // background CxColor* objects
+    CxSList<CxString> _fgPaletteStrings; // original color strings for serialization
+    CxSList<CxString> _bgPaletteStrings; // original color strings for serialization
+
+    void initDefaultPalettes(void);
+    void parsePalettes(CxJSONObject *baseItem);
 };
 
 #endif /* SpreadsheetDefaults_h */

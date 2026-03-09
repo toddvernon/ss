@@ -65,6 +65,9 @@ SpreadsheetDefaults::SpreadsheetDefaults(void)
     // Formula reference highlight colors - yellow to show which cells a formula references
     _formulaRefTextColor       = new CxRGBForegroundColor(40, 40, 40);    // dark text
     _formulaRefBackgroundColor = new CxRGBBackgroundColor(255, 255, 150); // yellow background
+
+    // Initialize default color palettes
+    initDefaultPalettes();
 }
 
 
@@ -210,6 +213,11 @@ SpreadsheetDefaults::loadDefaults(CxString fname)
                                        &_commandLineEditTextColor, FALSE);
                 }
             }
+
+            //-------------------------------------------------------------------------------------
+            // Parse color palettes
+            //-------------------------------------------------------------------------------------
+            parsePalettes(object);
         }
     }
 
@@ -573,8 +581,229 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     file.printf("        \"rowNumberTextColor\": \"%s\",\n", rowNumFg);
     file.printf("        \"commandLineDimTextColor\": \"%s\",\n", cmdLineDimFg);
     file.printf("        \"commandLineEditTextColor\": \"%s\"\n", cmdLineEditFg);
+    file.printf("    },\n");
+    file.printf("\n");
+    file.printf("    \"colorPalette\": {\n");
+    file.printf("        \"foreground\": [\n");
+    file.printf("            {\"color\": \"ANSI:NONE\"},\n");
+    file.printf("            {\"color\": \"RGB:255,255,255\"},\n");
+    file.printf("            {\"color\": \"RGB:215,215,215\"},\n");
+    file.printf("            {\"color\": \"RGB:135,255,135\"},\n");
+    file.printf("            {\"color\": \"RGB:175,255,175\"},\n");
+    file.printf("            {\"color\": \"RGB:135,215,255\"},\n");
+    file.printf("            {\"color\": \"RGB:175,215,255\"},\n");
+    file.printf("            {\"color\": \"RGB:255,215,0\"},\n");
+    file.printf("            {\"color\": \"RGB:255,175,0\"},\n");
+    file.printf("            {\"color\": \"RGB:255,135,95\"},\n");
+    file.printf("            {\"color\": \"RGB:255,95,175\"},\n");
+    file.printf("            {\"color\": \"RGB:215,135,255\"},\n");
+    file.printf("            {\"color\": \"RGB:0,215,215\"}\n");
+    file.printf("        ],\n");
+    file.printf("        \"background\": [\n");
+    file.printf("            {\"color\": \"ANSI:NONE\"},\n");
+    file.printf("            {\"color\": \"RGB:48,48,48\"},\n");
+    file.printf("            {\"color\": \"RGB:68,68,68\"},\n");
+    file.printf("            {\"color\": \"RGB:88,88,88\"},\n");
+    file.printf("            {\"color\": \"RGB:0,0,95\"},\n");
+    file.printf("            {\"color\": \"RGB:0,0,128\"},\n");
+    file.printf("            {\"color\": \"RGB:0,95,0\"},\n");
+    file.printf("            {\"color\": \"RGB:95,0,0\"},\n");
+    file.printf("            {\"color\": \"RGB:135,0,135\"},\n");
+    file.printf("            {\"color\": \"RGB:0,135,135\"},\n");
+    file.printf("            {\"color\": \"RGB:138,138,138\"},\n");
+    file.printf("            {\"color\": \"RGB:135,135,175\"}\n");
+    file.printf("        ]\n");
     file.printf("    }\n");
     file.printf("}\n");
 
     file.close();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SpreadsheetDefaults::initDefaultPalettes
+//
+// Initialize default color palettes (used if .ssrc has no colorPalette section).
+// Uses RGB colors for modern platforms, curated for dark terminal backgrounds.
+//-------------------------------------------------------------------------------------------------
+void
+SpreadsheetDefaults::initDefaultPalettes(void)
+{
+    // Foreground colors - bright colors readable on dark backgrounds
+    // Uses RGB on modern platforms for true color support
+    const char *fgColors[] = {
+        "ANSI:NONE",           // terminal default
+        "RGB:255,255,255",     // White
+        "RGB:215,215,215",     // Grey84
+        "RGB:135,255,135",     // LightGreen
+        "RGB:175,255,175",     // PaleGreen1
+        "RGB:135,215,255",     // SkyBlue1
+        "RGB:175,215,255",     // LightSteelBlue
+        "RGB:255,215,0",       // Gold
+        "RGB:255,175,0",       // Orange
+        "RGB:255,135,95",      // Salmon
+        "RGB:255,95,175",      // HotPink
+        "RGB:215,135,255",     // MediumOrchid
+        "RGB:0,215,215"        // DarkTurquoise
+    };
+    int fgCount = sizeof(fgColors) / sizeof(fgColors[0]);
+
+    for (int i = 0; i < fgCount; i++) {
+        _fgPaletteStrings.append(fgColors[i]);
+        _fgPalette.append(parseColor(fgColors[i], 0));  // 0 = foreground
+    }
+
+    // Background colors - darker/muted colors that don't overwhelm
+    const char *bgColors[] = {
+        "ANSI:NONE",           // terminal default
+        "RGB:48,48,48",        // Grey19
+        "RGB:68,68,68",        // Grey27
+        "RGB:88,88,88",        // Grey35
+        "RGB:0,0,95",          // DarkBlue
+        "RGB:0,0,128",         // NavyBlue
+        "RGB:0,95,0",          // DarkGreen
+        "RGB:95,0,0",          // DarkRed
+        "RGB:135,0,135",       // DarkMagenta
+        "RGB:0,135,135",       // DarkCyan
+        "RGB:138,138,138",     // Grey54
+        "RGB:135,135,175"      // LightSlateGrey
+    };
+    int bgCount = sizeof(bgColors) / sizeof(bgColors[0]);
+
+    for (int i = 0; i < bgCount; i++) {
+        _bgPaletteStrings.append(bgColors[i]);
+        _bgPalette.append(parseColor(bgColors[i], 1));  // 1 = background
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SpreadsheetDefaults::parsePalettes
+//
+// Parse color palettes from JSON config.
+// Color strings can be RGB:r,g,b, XTERM256:ColorName, or ANSI:ColorName.
+//-------------------------------------------------------------------------------------------------
+void
+SpreadsheetDefaults::parsePalettes(CxJSONObject *baseItem)
+{
+    if (baseItem == NULL) return;
+
+    CxJSONMember *paletteMember = baseItem->find("colorPalette");
+    if (paletteMember == NULL) return;
+    if (paletteMember->object()->type() != CxJSONBase::OBJECT) return;
+
+    CxJSONObject *paletteObj = (CxJSONObject *)paletteMember->object();
+
+    // Parse foreground palette
+    CxJSONMember *fgMember = paletteObj->find("foreground");
+    if (fgMember != NULL && fgMember->object()->type() == CxJSONBase::ARRAY) {
+        CxJSONArray *fgArray = (CxJSONArray *)fgMember->object();
+
+        // Clear existing palettes and rebuild
+        // Delete existing CxColor objects first
+        for (int i = 0; i < (int)_fgPalette.entries(); i++) {
+            CxColor *c = _fgPalette.at(i);
+            if (c != NULL) delete c;
+        }
+        _fgPalette.clear();
+        _fgPaletteStrings.clear();
+
+        for (int i = 0; i < (int)fgArray->entries(); i++) {
+            CxJSONBase *item = fgArray->at(i);
+            if (item->type() == CxJSONBase::OBJECT) {
+                CxJSONObject *colorObj = (CxJSONObject *)item;
+                CxJSONMember *colorMember = colorObj->find("color");
+                if (colorMember != NULL && colorMember->object()->type() == CxJSONBase::STRING) {
+                    CxJSONString *colorStr = (CxJSONString *)colorMember->object();
+                    CxString colorValue = colorStr->get();
+
+                    _fgPaletteStrings.append(colorValue);
+                    _fgPalette.append(parseColor(colorValue, 0));  // 0 = foreground
+                }
+            }
+        }
+    }
+
+    // Parse background palette
+    CxJSONMember *bgMember = paletteObj->find("background");
+    if (bgMember != NULL && bgMember->object()->type() == CxJSONBase::ARRAY) {
+        CxJSONArray *bgArray = (CxJSONArray *)bgMember->object();
+
+        // Clear existing palettes and rebuild
+        // Delete existing CxColor objects first
+        for (int i = 0; i < (int)_bgPalette.entries(); i++) {
+            CxColor *c = _bgPalette.at(i);
+            if (c != NULL) delete c;
+        }
+        _bgPalette.clear();
+        _bgPaletteStrings.clear();
+
+        for (int i = 0; i < (int)bgArray->entries(); i++) {
+            CxJSONBase *item = bgArray->at(i);
+            if (item->type() == CxJSONBase::OBJECT) {
+                CxJSONObject *colorObj = (CxJSONObject *)item;
+                CxJSONMember *colorMember = colorObj->find("color");
+                if (colorMember != NULL && colorMember->object()->type() == CxJSONBase::STRING) {
+                    CxJSONString *colorStr = (CxJSONString *)colorMember->object();
+                    CxString colorValue = colorStr->get();
+
+                    _bgPaletteStrings.append(colorValue);
+                    _bgPalette.append(parseColor(colorValue, 1));  // 1 = background
+                }
+            }
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// Color palette accessors
+//-------------------------------------------------------------------------------------------------
+
+int
+SpreadsheetDefaults::getFgPaletteSize(void)
+{
+    return (int)_fgPalette.entries();
+}
+
+int
+SpreadsheetDefaults::getBgPaletteSize(void)
+{
+    return (int)_bgPalette.entries();
+}
+
+CxColor *
+SpreadsheetDefaults::getFgPaletteColor(int index)
+{
+    if (index < 0 || index >= (int)_fgPalette.entries()) {
+        return NULL;
+    }
+    return _fgPalette.at(index);
+}
+
+CxColor *
+SpreadsheetDefaults::getBgPaletteColor(int index)
+{
+    if (index < 0 || index >= (int)_bgPalette.entries()) {
+        return NULL;
+    }
+    return _bgPalette.at(index);
+}
+
+CxString
+SpreadsheetDefaults::getFgPaletteString(int index)
+{
+    if (index < 0 || index >= (int)_fgPaletteStrings.entries()) {
+        return "ANSI:NONE";
+    }
+    return _fgPaletteStrings.at(index);
+}
+
+CxString
+SpreadsheetDefaults::getBgPaletteString(int index)
+{
+    if (index < 0 || index >= (int)_bgPaletteStrings.entries()) {
+        return "ANSI:NONE";
+    }
+    return _bgPaletteStrings.at(index);
 }
