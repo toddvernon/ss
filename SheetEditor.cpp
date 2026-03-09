@@ -1187,6 +1187,7 @@ SheetEditor::initCommandCompleters(void)
 // Update the command line to show cell position and content.
 // For formulas, shows the formula text (with = prefix).
 // For other types, shows the display value.
+// Right-justified: format indicator (alignment, currency, etc.).
 // Does NOT clear the message line - messages persist until the next user action.
 //-------------------------------------------------------------------------------------------------
 void
@@ -1194,17 +1195,51 @@ SheetEditor::updateCommandLineDisplay(void)
 {
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
     CxSheetCell *cell = sheetModel->getCellPtr(pos);
+    int col = pos.getCol();
 
-    CxString display = pos.toAddress();
-
+    // Build left side: cell address + content
+    CxString leftText = pos.toAddress();
     CxString cellText = getCellDisplayText(cell);
     if (cellText.length() > 0) {
-        display = display + " " + cellText;
+        leftText = leftText + " " + cellText;
     }
 
-    commandLineView->setDimMode(1);
-    commandLineView->setText(display);
-    commandLineView->updateScreen();
+    // Build right side: format indicator
+    CxString formatIndicator = getCellFormatIndicator(cell, col);
+
+    // Position cursor and draw
+    int screenRow = commandLineView->getScreenRow();
+    int screenWidth = CxScreen::cols();
+    CxScreen::placeCursor(screenRow, 0);
+
+    // Apply dim colors for command line
+    spreadsheetDefaults->applyCommandLineDimColors(screen);
+    CxScreen::clearScreenFromCursorToEndOfLine();
+
+    // Output left side text
+    printf("%s", leftText.data());
+
+    // If we have format indicator, render it right-justified
+    if (formatIndicator.length() > 0) {
+        // Calculate left text display width (use UTF for proper width)
+        CxUTFString leftUTF;
+        leftUTF.fromCxString(leftText, 8);
+        int leftWidth = leftUTF.displayWidth();
+
+        // Position for right-justified content (ensure at least 2 spaces gap)
+        int rightStartCol = screenWidth - formatIndicator.length();
+        if (rightStartCol < leftWidth + 2) {
+            rightStartCol = leftWidth + 2;
+        }
+
+        // Move to right side position and output format indicator
+        CxScreen::placeCursor(screenRow, rightStartCol);
+        printf("%s", formatIndicator.data());
+    }
+
+    // Reset colors and hide cursor
+    spreadsheetDefaults->resetColors(screen);
+    screen->hideCursor();
 }
 
 
@@ -1748,6 +1783,58 @@ SheetEditor::getCellDisplayText(CxSheetCell *cell)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::getCellFormatIndicator
+//
+// Build format indicator string for a cell. Shows only non-default attributes.
+// Returns alignment (if differs from type default), currency, percent, thousands, decimals.
+//-------------------------------------------------------------------------------------------------
+CxString
+SheetEditor::getCellFormatIndicator(CxSheetCell *cell, int col)
+{
+    CxString result;
+
+    // Get effective attributes via SheetView cascaded getters
+    CxString align = sheetView->getEffectiveAlign(col, cell);
+    int currency = sheetView->getEffectiveCurrency(col, cell);
+    int percent = sheetView->getEffectivePercent(col, cell);
+    int thousands = sheetView->getEffectiveThousands(col, cell);
+    int decimals = sheetView->getEffectiveDecimalPlaces(col, cell);
+
+    // Determine type-default alignment
+    CxString typeDefault = "right";  // DOUBLE, FORMULA default
+    if (cell != NULL) {
+        if (cell->getType() == CxSheetCell::TEXT) typeDefault = "left";
+        if (cell->getType() == CxSheetCell::EMPTY) typeDefault = "";
+    }
+
+    // Build indicator (non-defaults only)
+    if (align.length() > 0 && align != typeDefault) {
+        result.append(align);
+    }
+    if (currency) {
+        if (result.length() > 0) result.append(" ");
+        result.append("currency");
+    }
+    if (percent) {
+        if (result.length() > 0) result.append(" ");
+        result.append("percent");
+    }
+    if (thousands) {
+        if (result.length() > 0) result.append(" ");
+        result.append("thousands");
+    }
+    if (decimals >= 0) {
+        if (result.length() > 0) result.append(" ");
+        char decBuf[8];
+        snprintf(decBuf, sizeof(decBuf), ".%d", decimals);
+        result.append(decBuf);
+    }
+
+    return result;
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::enterDataEntryMode
 //
 // Enter data entry mode with the specified type and first character.
@@ -1928,6 +2015,23 @@ SheetEditor::commitDataEntry(void)
     // Convert UTF buffer to bytes for cell storage
     CxString bufferText = _dataEntryBuffer.toBytes();
 
+    // Preserve color attributes from the existing cell (applies to all entry modes)
+    CxSheetCell *oldCellForColors = sheetModel->getCellPtr(pos);
+    int oldHasFgColor = 0;
+    int oldHasBgColor = 0;
+    CxString oldFgColor;
+    CxString oldBgColor;
+    if (oldCellForColors) {
+        oldHasFgColor = oldCellForColors->hasAppAttribute("fgColor") ? 1 : 0;
+        oldHasBgColor = oldCellForColors->hasAppAttribute("bgColor") ? 1 : 0;
+        if (oldHasFgColor) {
+            oldFgColor = oldCellForColors->getAppAttributeString("fgColor");
+        }
+        if (oldHasBgColor) {
+            oldBgColor = oldCellForColors->getAppAttributeString("bgColor");
+        }
+    }
+
     if (_dataEntryMode == ENTRY_TEXTMAP) {
         // Textmap mode - strip leading '@' and store as appAttribute on EMPTY cell
         CxString ruleText = bufferText;
@@ -1937,6 +2041,13 @@ SheetEditor::commitDataEntry(void)
         // Cell stays EMPTY; the textmap rule is a display-layer attribute
         cell.setAppAttribute("textmap", ruleText.data());
         sheetModel->setCell(pos, cell);
+
+        // Restore color attributes
+        CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
+        if (cellPtr) {
+            if (oldHasFgColor) cellPtr->setAppAttribute("fgColor", oldFgColor.data());
+            if (oldHasBgColor) cellPtr->setAppAttribute("bgColor", oldBgColor.data());
+        }
     }
     else if (_dataEntryMode == ENTRY_FORMULA) {
         // Formula mode - strip leading '=' and parse as formula
@@ -1946,6 +2057,13 @@ SheetEditor::commitDataEntry(void)
         }
         cell.setFormula(formulaText);
         sheetModel->setCell(pos, cell);
+
+        // Restore color attributes
+        CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
+        if (cellPtr) {
+            if (oldHasFgColor) cellPtr->setAppAttribute("fgColor", oldFgColor.data());
+            if (oldHasBgColor) cellPtr->setAppAttribute("bgColor", oldBgColor.data());
+        }
     }
     else if (_dataEntryMode == ENTRY_GENERAL) {
         // Post-commit parsing via sheetModel library
@@ -2010,6 +2128,10 @@ SheetEditor::commitDataEntry(void)
             if (oldHasAlign) {
                 cellPtr->setAppAttribute("align", oldAlign.data());
             }
+
+            // Restore color attributes
+            if (oldHasFgColor) cellPtr->setAppAttribute("fgColor", oldFgColor.data());
+            if (oldHasBgColor) cellPtr->setAppAttribute("bgColor", oldBgColor.data());
         }
     }
 

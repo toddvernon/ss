@@ -60,6 +60,9 @@ class CommandLineView {
     void setDimMode(int dim);
     // set dim mode (1 = dark gray for browsing, 0 = white for editing)
 
+    int getScreenRow(void);
+    // get the screen row for this view
+
   private:
 
     CxScreen *_screen;

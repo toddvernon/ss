@@ -238,6 +238,7 @@ class SheetEditor {
     DataEntryMode deduceEntryModeFromChar(char c);
     int isValidInputChar(char c, DataEntryMode mode);
     CxString getCellDisplayText(CxSheetCell *cell);
+    CxString getCellFormatIndicator(CxSheetCell *cell, int col);
 
     // post-commit parsing helpers (Excel-style type inference)
     int tryParseNumber(CxString input, double *value, int *hasCurrency,

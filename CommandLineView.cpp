@@ -149,3 +149,15 @@ CommandLineView::placeCursorAt(int col)
 {
     CxScreen::placeCursor(_screenRow, col);
 }
+
+
+//-------------------------------------------------------------------------------------------------
+// CommandLineView::getScreenRow
+//
+// Return the screen row for this view.
+//-------------------------------------------------------------------------------------------------
+int
+CommandLineView::getScreenRow(void)
+{
+    return _screenRow;
+}
