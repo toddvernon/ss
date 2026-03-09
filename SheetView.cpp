@@ -305,6 +305,20 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
             affectedCells.append(newPos);
         }
         updateCells(affectedCells);
+
+        // Update column headers if column changed
+        if (oldPos.getCol() != newPos.getCol()) {
+            drawColumnHeader(oldPos.getCol());
+            drawColumnHeader(newPos.getCol());
+        }
+
+        // Update row numbers if row changed
+        if (oldPos.getRow() != newPos.getRow()) {
+            int oldScreenRow = _startRow + _colHeaderHeight + (oldPos.getRow() - _scrollRowOffset);
+            int newScreenRow = _startRow + _colHeaderHeight + (newPos.getRow() - _scrollRowOffset);
+            drawRowNumber(oldScreenRow, oldPos.getRow());
+            drawRowNumber(newScreenRow, newPos.getRow());
+        }
     }
 }
 
@@ -317,6 +331,8 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
 void
 SheetView::drawColumnHeaders(void)
 {
+    int cursorCol = sheetModel->getCurrentPosition().getCol();
+
     CxScreen::placeCursor(_startRow, 0);
 
     // Apply header colors
@@ -336,6 +352,11 @@ SheetView::drawColumnHeaders(void)
         int colWidth = getColumnWidth(dataCol);
         CxString colName = tempCoord.colToLetters(dataCol);
 
+        // Switch to highlight colors for cursor column
+        if (dataCol == cursorCol) {
+            _defaults->applyHeaderHighlightColors(screen);
+        }
+
         // Center the column name in the column width
         int padding = (colWidth - colName.length()) / 2;
         for (int p = 0; p < padding && screenX < screenWidth; p++) {
@@ -352,9 +373,66 @@ SheetView::drawColumnHeaders(void)
             printf(" ");
             screenX++;
         }
+
+        // Switch back to normal header colors after cursor column
+        if (dataCol == cursorCol) {
+            _defaults->applyHeaderColors(screen);
+        }
     }
 
     // Reset colors
+    _defaults->resetColors(screen);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::drawColumnHeader
+//
+// Draw a single column header at its position (used for incremental updates).
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::drawColumnHeader(int dataCol)
+{
+    int cursorCol = sheetModel->getCurrentPosition().getCol();
+
+    // Calculate screen X for this column
+    int screenX = _rowHeaderWidth;
+    int screenWidth = screen->cols();
+    CxSheetCellCoordinate tempCoord;
+
+    for (int c = _scrollColOffset; c < dataCol; c++) {
+        screenX += getColumnWidth(c);
+    }
+
+    // Off-screen check
+    if (screenX >= screenWidth) return;
+
+    int colWidth = getColumnWidth(dataCol);
+    CxString colName = tempCoord.colToLetters(dataCol);
+
+    CxScreen::placeCursor(_startRow, screenX);
+
+    if (dataCol == cursorCol) {
+        _defaults->applyHeaderHighlightColors(screen);
+    } else {
+        _defaults->applyHeaderColors(screen);
+    }
+
+    int padding = (colWidth - colName.length()) / 2;
+    for (int p = 0; p < padding && screenX < screenWidth; p++) {
+        printf(" ");
+        screenX++;
+    }
+    for (int i = 0; i < (int)colName.length() && screenX < screenWidth; i++) {
+        printf("%c", colName.data()[i]);
+        screenX++;
+    }
+    int remaining = colWidth - padding - colName.length();
+    for (int p = 0; p < remaining && screenX < screenWidth; p++) {
+        printf(" ");
+        screenX++;
+    }
+
     _defaults->resetColors(screen);
 }
 
@@ -368,15 +446,20 @@ void
 SheetView::drawRowNumbers(void)
 {
     int numRows = visibleDataRows();
-
-    // Apply header colors (same as column headers for visual consistency)
-    _defaults->applyHeaderColors(screen);
+    int cursorRow = sheetModel->getCurrentPosition().getRow();
 
     for (int r = 0; r < numRows; r++) {
         int screenRow = _startRow + _colHeaderHeight + r;
         int dataRow = r + _scrollRowOffset;
 
         CxScreen::placeCursor(screenRow, 0);
+
+        // Apply highlight colors for cursor row, normal for others
+        if (dataRow == cursorRow) {
+            _defaults->applyHeaderHighlightColors(screen);
+        } else {
+            _defaults->applyHeaderColors(screen);
+        }
 
         // Row number (1-based display)
         char rowNum[16];
@@ -397,7 +480,14 @@ SheetView::drawRowNumbers(void)
 void
 SheetView::drawRowNumber(int screenRow, int dataRow)
 {
-    _defaults->applyHeaderColors(screen);
+    int cursorRow = sheetModel->getCurrentPosition().getRow();
+
+    if (dataRow == cursorRow) {
+        _defaults->applyHeaderHighlightColors(screen);
+    } else {
+        _defaults->applyHeaderColors(screen);
+    }
+
     CxScreen::placeCursor(screenRow, 0);
 
     char rowNum[16];

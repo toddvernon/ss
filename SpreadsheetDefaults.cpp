@@ -27,6 +27,10 @@ SpreadsheetDefaults::SpreadsheetDefaults(void)
     _headerTextColor       = new CxAnsiForegroundColor(CxAnsiForegroundColor::NONE);
     _headerBackgroundColor = new CxAnsiBackgroundColor(CxAnsiBackgroundColor::NONE);
 
+    // Header highlight colors - brighter than normal headers
+    _headerHighlightTextColor       = new CxRGBForegroundColor(255, 255, 255);
+    _headerHighlightBackgroundColor = new CxRGBBackgroundColor(90, 110, 160);
+
     // Divider line color
     _dividerColor = new CxAnsiForegroundColor(CxAnsiForegroundColor::NONE);
 
@@ -175,6 +179,10 @@ SpreadsheetDefaults::loadDefaults(CxString fname)
                                        &_headerTextColor, FALSE);
                     parseColorFromJSON(colorObject, "headerBackgroundColor",
                                        &_headerBackgroundColor, TRUE);
+                    parseColorFromJSON(colorObject, "headerHighlightTextColor",
+                                       &_headerHighlightTextColor, FALSE);
+                    parseColorFromJSON(colorObject, "headerHighlightBackgroundColor",
+                                       &_headerHighlightBackgroundColor, TRUE);
 
                     // Divider color
                     parseColorFromJSON(colorObject, "dividerColor",
@@ -341,6 +349,16 @@ CxColor *SpreadsheetDefaults::headerBackgroundColor(void)
     return _headerBackgroundColor;
 }
 
+CxColor *SpreadsheetDefaults::headerHighlightTextColor(void)
+{
+    return _headerHighlightTextColor;
+}
+
+CxColor *SpreadsheetDefaults::headerHighlightBackgroundColor(void)
+{
+    return _headerHighlightBackgroundColor;
+}
+
 CxColor *SpreadsheetDefaults::dividerColor(void)
 {
     return _dividerColor;
@@ -437,6 +455,12 @@ void SpreadsheetDefaults::applyHeaderColors(CxScreen *screen)
     screen->setBackgroundColor(_headerBackgroundColor);
 }
 
+void SpreadsheetDefaults::applyHeaderHighlightColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_headerHighlightTextColor);
+    screen->setBackgroundColor(_headerHighlightBackgroundColor);
+}
+
 void SpreadsheetDefaults::applySelectedCellColors(CxScreen *screen)
 {
     screen->setForegroundColor(_selectedCellTextColor);
@@ -518,6 +542,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     const char *hdr = "# Uses RGB true color - requires 24-bit color terminal support";
     const char *headerFg     = "RGB:220,220,240";
     const char *headerBg     = "RGB:60,70,100";
+    const char *headerHiFg   = "RGB:255,255,255";
+    const char *headerHiBg   = "RGB:90,110,160";
     const char *divider      = "RGB:80,100,140";
     const char *cmdLineFg    = "RGB:200,210,230";
     const char *cmdLineBg    = "RGB:50,55,75";
@@ -533,6 +559,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     const char *hdr = "# Uses XTERM 256 color palette for broad terminal compatibility";
     const char *headerFg     = "XTERM256:Grey84";
     const char *headerBg     = "XTERM256:DarkSlateGray";
+    const char *headerHiFg   = "XTERM256:White";
+    const char *headerHiBg   = "XTERM256:SteelBlue";
     const char *divider      = "XTERM256:SteelBlue";
     const char *cmdLineFg    = "XTERM256:Grey89";
     const char *cmdLineBg    = "XTERM256:Grey23";
@@ -548,6 +576,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     const char *hdr = "# Uses ANSI 16-color palette for maximum terminal compatibility";
     const char *headerFg     = "ANSI:BRIGHT_WHITE";
     const char *headerBg     = "ANSI:BLUE";
+    const char *headerHiFg   = "ANSI:BRIGHT_WHITE";
+    const char *headerHiBg   = "ANSI:CYAN";
     const char *divider      = "ANSI:BRIGHT_BLUE";
     const char *cmdLineFg    = "ANSI:WHITE";
     const char *cmdLineBg    = "ANSI:BLUE";
@@ -570,6 +600,8 @@ SpreadsheetDefaults::writeDefaults(CxString path)
     file.printf("    \"colors\": {\n");
     file.printf("        \"headerTextColor\": \"%s\",\n", headerFg);
     file.printf("        \"headerBackgroundColor\": \"%s\",\n", headerBg);
+    file.printf("        \"headerHighlightTextColor\": \"%s\",\n", headerHiFg);
+    file.printf("        \"headerHighlightBackgroundColor\": \"%s\",\n", headerHiBg);
     file.printf("        \"dividerColor\": \"%s\",\n", divider);
     file.printf("        \"commandLineTextColor\": \"%s\",\n", cmdLineFg);
     file.printf("        \"commandLineBackgroundColor\": \"%s\",\n", cmdLineBg);

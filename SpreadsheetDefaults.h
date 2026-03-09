@@ -46,6 +46,8 @@ public:
     // Row/column header colors
     CxColor *headerTextColor(void);
     CxColor *headerBackgroundColor(void);
+    CxColor *headerHighlightTextColor(void);
+    CxColor *headerHighlightBackgroundColor(void);
 
     // Divider line color
     CxColor *dividerColor(void);
@@ -84,6 +86,7 @@ public:
 
     // Color helper methods - apply foreground and background in one call
     void applyHeaderColors(CxScreen *screen);
+    void applyHeaderHighlightColors(CxScreen *screen);
     void applySelectedCellColors(CxScreen *screen);
     void applyCellColors(CxScreen *screen);
     void applyCommandLineColors(CxScreen *screen);
@@ -123,6 +126,8 @@ private:
     // Row/column header colors
     CxColor *_headerTextColor;
     CxColor *_headerBackgroundColor;
+    CxColor *_headerHighlightTextColor;
+    CxColor *_headerHighlightBackgroundColor;
 
     // Divider line color
     CxColor *_dividerColor;

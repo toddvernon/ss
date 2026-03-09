@@ -232,6 +232,7 @@ class SheetView {
 
     // internal helpers
     void drawColumnHeaders(void);
+    void drawColumnHeader(int dataCol);
     void drawRowNumbers(void);
     void drawCells(void);
     void drawRow(int screenRow, int dataRow);

@@ -293,8 +293,23 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
 
             // Cancel range selection if active (plain arrow cancels selection)
             if (_rangeSelectActive) {
+                // Build list of all cells in the range so we can redraw them unhighlighted
+                CxSList<CxSheetCellCoordinate> rangeCells;
+                int minRow = _rangeAnchor.getRow();
+                int maxRow = _rangeCurrent.getRow();
+                int minCol = _rangeAnchor.getCol();
+                int maxCol = _rangeCurrent.getCol();
+                if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
+                if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+                for (int r = minRow; r <= maxRow; r++) {
+                    for (int c = minCol; c <= maxCol; c++) {
+                        rangeCells.append(CxSheetCellCoordinate(r, c));
+                    }
+                }
+
                 _rangeSelectActive = 0;
                 sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+                sheetView->updateCells(rangeCells);
             }
 
             // Save old position before moving
