@@ -19,6 +19,8 @@
 #include <cx/base/utfcharacter.h>
 #include <cx/base/file.h>
 #include <cx/json/json_utf_object.h>
+#include <cx/json/json_utf_member.h>
+#include <cx/json/json_utf_number.h>
 #include <cx/sheetModel/sheetInputParser.h>
 #include <cx/expression/expression.h>
 #include "SheetEditor.h"
@@ -120,6 +122,22 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     if (fileLoadResult) {
         CxJSONUTFObject *appData = sheetModel->getAppData();
         sheetView->loadColumnWidthsFromAppData(appData);
+
+        // Restore cursor position from app data
+        if (appData != NULL) {
+            CxJSONUTFMember *rowMember = appData->find("cursorRow");
+            CxJSONUTFMember *colMember = appData->find("cursorCol");
+            if (rowMember != NULL && colMember != NULL) {
+                CxJSONUTFBase *rowBase = rowMember->object();
+                CxJSONUTFBase *colBase = colMember->object();
+                if (rowBase != NULL && rowBase->type() == CxJSONUTFBase::NUMBER &&
+                    colBase != NULL && colBase->type() == CxJSONUTFBase::NUMBER) {
+                    int row = (int)((CxJSONUTFNumber *)rowBase)->get();
+                    int col = (int)((CxJSONUTFNumber *)colBase)->get();
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(row, col));
+                }
+            }
+        }
     }
 
     //---------------------------------------------------------------------------------------------
@@ -1416,6 +1434,22 @@ SheetEditor::CMD_Load(CxString commandLine)
         CxJSONUTFObject *appData = sheetModel->getAppData();
         sheetView->loadColumnWidthsFromAppData(appData);
 
+        // Restore cursor position from app data
+        if (appData != NULL) {
+            CxJSONUTFMember *rowMember = appData->find("cursorRow");
+            CxJSONUTFMember *colMember = appData->find("cursorCol");
+            if (rowMember != NULL && colMember != NULL) {
+                CxJSONUTFBase *rowBase = rowMember->object();
+                CxJSONUTFBase *colBase = colMember->object();
+                if (rowBase != NULL && rowBase->type() == CxJSONUTFBase::NUMBER &&
+                    colBase != NULL && colBase->type() == CxJSONUTFBase::NUMBER) {
+                    int row = (int)((CxJSONUTFNumber *)rowBase)->get();
+                    int col = (int)((CxJSONUTFNumber *)colBase)->get();
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(row, col));
+                }
+            }
+        }
+
         setMessage(CxString("Loaded: ") + filepath);
         sheetView->updateScreen();
     } else {
@@ -1452,6 +1486,35 @@ SheetEditor::CMD_Save(CxString commandLine)
         sheetModel->setAppData(appData);
     }
     sheetView->saveColumnWidthsToAppData(appData);
+
+    // Save cursor position to app data
+    CxSheetCellCoordinate cursorPos = sheetModel->getCurrentPosition();
+    CxJSONUTFNumber *cursorRowNum = new CxJSONUTFNumber((double)cursorPos.getRow());
+    CxJSONUTFNumber *cursorColNum = new CxJSONUTFNumber((double)cursorPos.getCol());
+
+    // Remove existing cursor entries if present, then add new ones
+    CxJSONUTFMember *existingRow = appData->find("cursorRow");
+    CxJSONUTFMember *existingCol = appData->find("cursorCol");
+    if (existingRow != NULL) {
+        for (int i = 0; i < appData->entries(); i++) {
+            if (appData->at(i) == existingRow) {
+                appData->removeAt(i);
+                delete existingRow;
+                break;
+            }
+        }
+    }
+    if (existingCol != NULL) {
+        for (int i = 0; i < appData->entries(); i++) {
+            if (appData->at(i) == existingCol) {
+                appData->removeAt(i);
+                delete existingCol;
+                break;
+            }
+        }
+    }
+    appData->append(new CxJSONUTFMember("cursorRow", cursorRowNum));
+    appData->append(new CxJSONUTFMember("cursorCol", cursorColNum));
 
     // Try to save the file
     if (sheetModel->saveSheet(filepath)) {
