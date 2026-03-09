@@ -38,7 +38,8 @@ enum HighlightType {
     HIGHLIGHT_CURSOR = 1,       // current cursor position (blue)
     HIGHLIGHT_HUNT = 2,         // cell hunt cursor (green)
     HIGHLIGHT_HUNT_RANGE = 3,   // cell hunt range fill (light green)
-    HIGHLIGHT_RANGE = 4         // EDIT mode range selection (light blue)
+    HIGHLIGHT_RANGE = 4,        // EDIT mode range selection (light blue)
+    HIGHLIGHT_FORMULA_REF = 5   // formula reference highlight (yellow)
 };
 
 
@@ -121,6 +122,12 @@ class SheetView {
                                   CxSheetCellCoordinate oldCurrent,
                                   CxSheetCellCoordinate newCurrent);
     // optimized redraw for range selection extension - only redraws changed cells
+
+    void setFormulaRefHighlight(int active, CxSList<CxSheetCellCoordinate> cells);
+    // enable/disable formula reference highlighting with list of cells to highlight
+
+    int isFormulaRefHighlightActive(void);
+    // check if formula ref highlighting is currently active
 
     void setFilePath(CxString path);
     // set the file path for status line display
@@ -206,6 +213,10 @@ class SheetView {
     int _rangeSelectActive;                 // 1 if range selection is active
     CxSheetCellCoordinate _rangeAnchor;     // where selection started
     CxSheetCellCoordinate _rangeCurrent;    // current end of selection
+
+    // Formula reference highlight state
+    int _formulaRefHighlightActive;         // 1 if formula ref highlighting is active
+    CxSList<CxSheetCellCoordinate> _formulaRefCells;  // cells referenced by formula
 
     // internal helpers
     void drawColumnHeaders(void);

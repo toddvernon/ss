@@ -47,6 +47,7 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
 , _inCellHuntMode(0)
 , _huntRangeActive(0)
 , _rangeSelectActive(0)
+, _formulaRefHighlightActive(0)
 {
     // Initialize all column widths to 0 (meaning use default)
     for (int i = 0; i < MAX_COLUMNS; i++) {
@@ -753,14 +754,15 @@ SheetView::drawRow(int screenRow, int dataRow)
             }
         }
 
+        HighlightType ht = getHighlightTypeForCell(dataRow, dataCols[i]);
+
         CxScreen::placeCursor(screenRow, drawScreenCol);
         CxSheetCellCoordinate coord(dataRow, dataCols[i]);
 
         CxString content = formatCellValue(
             sheetModel->getCellPtr(coord), dataCols[i], drawWidth);
 
-        HighlightType highlightType = getHighlightTypeForCell(dataRow, dataCols[i]);
-        switch (highlightType) {
+        switch (ht) {
             case HIGHLIGHT_CURSOR:
                 _defaults->applySelectedCellColors(screen);
                 printf("%s", content.data());
@@ -778,6 +780,11 @@ SheetView::drawRow(int screenRow, int dataRow)
                 break;
             case HIGHLIGHT_RANGE:
                 _defaults->applyRangeSelectColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_FORMULA_REF:
+                _defaults->applyFormulaRefColors(screen);
                 printf("%s", content.data());
                 _defaults->resetColors(screen);
                 break;
@@ -841,6 +848,12 @@ SheetView::drawCell(int screenRow, int screenCol, int dataRow, int dataCol,
 
         case HIGHLIGHT_RANGE:
             _defaults->applyRangeSelectColors(screen);
+            printf("%s", content.data());
+            _defaults->resetColors(screen);
+            break;
+
+        case HIGHLIGHT_FORMULA_REF:
+            _defaults->applyFormulaRefColors(screen);
             printf("%s", content.data());
             _defaults->resetColors(screen);
             break;
@@ -1330,7 +1343,7 @@ SheetView::getCellAlignment(CxSheetCell *cell)
 //
 // Get the untruncated display width of a cell's formatted content.
 // Uses formatCellValue with a very large width to get the full content,
-// then measures its display width (excluding trailing padding spaces).
+// then measures its display width (excluding leading AND trailing padding spaces).
 //-------------------------------------------------------------------------------------------------
 int
 SheetView::getCellContentWidth(CxSheetCell *cell, int col)
@@ -1342,26 +1355,31 @@ SheetView::getCellContentWidth(CxSheetCell *cell, int col)
     // Format with large width to avoid truncation
     CxString content = formatCellValue(cell, col, 1000);
 
-    // Strip trailing spaces to get actual content width
+    // Find first and last non-space to get actual content bounds
+    // (excludes leading padding for right-aligned and trailing padding for left-aligned)
     CxUTFString utfContent;
     utfContent.fromCxString(content, 8);
 
     CxUTFCharacter spaceChar = CxUTFCharacter::fromASCII(' ');
+    int firstNonSpace = -1;
     int lastNonSpace = -1;
     for (int i = 0; i < utfContent.charCount(); i++) {
         const CxUTFCharacter *ch = utfContent.at(i);
         if (ch != NULL && !(*ch == spaceChar)) {
+            if (firstNonSpace < 0) {
+                firstNonSpace = i;
+            }
             lastNonSpace = i;
         }
     }
 
-    if (lastNonSpace < 0) {
+    if (firstNonSpace < 0 || lastNonSpace < 0) {
         return 0;
     }
 
-    // Measure display width up to and including last non-space
+    // Measure display width from first to last non-space (actual content only)
     int width = 0;
-    for (int i = 0; i <= lastNonSpace; i++) {
+    for (int i = firstNonSpace; i <= lastNonSpace; i++) {
         const CxUTFCharacter *ch = utfContent.at(i);
         if (ch != NULL) {
             width += ch->displayWidth();
@@ -1743,6 +1761,32 @@ SheetView::setRangeSelection(int active, CxSheetCellCoordinate anchor,
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::setFormulaRefHighlight
+//
+// Enable or disable formula reference highlighting.
+// When active, the provided list of cells will be highlighted with HIGHLIGHT_FORMULA_REF.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setFormulaRefHighlight(int active, CxSList<CxSheetCellCoordinate> cells)
+{
+    _formulaRefHighlightActive = active;
+    _formulaRefCells = cells;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::isFormulaRefHighlightActive
+//
+// Check if formula reference highlighting is currently active.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::isFormulaRefHighlightActive(void)
+{
+    return _formulaRefHighlightActive;
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::updateRangeSelectionMove
 //
 // Optimized redraw for range selection extension. Only redraws cells that changed
@@ -1893,6 +1937,19 @@ SheetView::getHighlightTypeForCell(int dataRow, int dataCol)
         // Check if this is within the selection range (EDIT mode multi-cell selection)
         if (_rangeSelectActive && isCellInSelectionRange(dataRow, dataCol)) {
             return HIGHLIGHT_RANGE;
+        }
+
+        // Check if this cell is in the formula reference highlight list
+        if (_formulaRefHighlightActive) {
+            CxSListIterator<CxSheetCellCoordinate> iter = _formulaRefCells.begin();
+            CxSListIterator<CxSheetCellCoordinate> endIter = _formulaRefCells.end();
+            while (iter != endIter) {
+                CxSheetCellCoordinate coord = *iter;
+                ++iter;
+                if ((int)coord.getRow() == dataRow && (int)coord.getCol() == dataCol) {
+                    return HIGHLIGHT_FORMULA_REF;
+                }
+            }
         }
     }
 

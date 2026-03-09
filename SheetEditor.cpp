@@ -20,6 +20,7 @@
 #include <cx/base/file.h>
 #include <cx/json/json_utf_object.h>
 #include <cx/sheetModel/sheetInputParser.h>
+#include <cx/expression/expression.h>
 #include "SheetEditor.h"
 
 
@@ -296,7 +297,8 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         break;
 
         //-------------------------------------------------------------------------------------
-        // Ctrl+Arrow key adjusts column width
+        // Ctrl+Arrow key adjusts column width, Ctrl/Option+Up toggles formula highlight
+        // Note: Option+Arrow also maps here on macOS (modifier 3)
         //-------------------------------------------------------------------------------------
         case CxKeyAction::CTRL_CURSOR:
         {
@@ -305,6 +307,71 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                 adjustColumnWidth(1);
             } else if (tag == "<ctrl-arrow-left>") {
                 adjustColumnWidth(-1);
+            } else if (tag == "<ctrl-arrow-up>") {
+                // Toggle formula reference highlighting
+                if (sheetView->isFormulaRefHighlightActive()) {
+                    // Turn off highlighting
+                    CxSList<CxSheetCellCoordinate> emptyList;
+                    sheetView->setFormulaRefHighlight(0, emptyList);
+                    sheetView->updateScreen();
+                }
+                else {
+                    // Check if current cell is a formula
+                    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                    CxSheetCell *cell = sheetModel->getCellPtr(pos);
+
+                    if (cell != NULL && cell->cellType == CxSheetCell::FORMULA) {
+                        // Get the parsed formula expression
+                        CxExpression *expr = cell->formula;
+                        if (expr != NULL) {
+                            CxSList<CxSheetCellCoordinate> refCells;
+
+                            // Get list of single cell references (e.g., "A1", "B2")
+                            CxSList<CxString> varList = expr->GetVariableList();
+                            for (int i = 0; i < (int)varList.entries(); i++) {
+                                CxString varName = varList.at(i);
+                                refCells.append(CxSheetCellCoordinate(varName));
+                            }
+
+                            // Get list of ranges (e.g., "A1:C3") and expand to all cells
+                            CxSList<CxString> rangeList = expr->GetRangeList();
+                            for (int i = 0; i < (int)rangeList.entries(); i++) {
+                                CxString rangeName = rangeList.at(i);
+
+                                // Parse range "A1:C3" into start and end coordinates
+                                int colonPos = rangeName.firstChar(':');
+                                if (colonPos >= 0) {
+                                    CxString startAddr = rangeName.subString(0, colonPos);
+                                    CxString endAddr = rangeName.subString(colonPos + 1,
+                                                                           rangeName.length() - colonPos - 1);
+                                    CxSheetCellCoordinate startCoord(startAddr);
+                                    CxSheetCellCoordinate endCoord(endAddr);
+
+                                    // Get bounds (normalize in case they're reversed)
+                                    int minRow = (int)startCoord.getRow();
+                                    int maxRow = (int)endCoord.getRow();
+                                    int minCol = (int)startCoord.getCol();
+                                    int maxCol = (int)endCoord.getCol();
+                                    if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
+                                    if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+
+                                    // Add all cells in range
+                                    for (int r = minRow; r <= maxRow; r++) {
+                                        for (int c = minCol; c <= maxCol; c++) {
+                                            refCells.append(CxSheetCellCoordinate(r, c));
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Enable highlighting if we have any references
+                            if (refCells.entries() > 0) {
+                                sheetView->setFormulaRefHighlight(1, refCells);
+                                sheetView->updateScreen();
+                            }
+                        }
+                    }
+                }
             }
         }
         break;
@@ -413,6 +480,84 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
             else if (tag == "Y") {
                 // Ctrl-Y: paste
                 CMD_Paste("");
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Option key sequences
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::OPTION:
+        {
+            CxString tag = keyAction.tag();
+
+            if (tag == "<option-arrow-up>") {
+                // Toggle formula reference highlighting
+                if (sheetView->isFormulaRefHighlightActive()) {
+                    // Turn off highlighting
+                    CxSList<CxSheetCellCoordinate> emptyList;
+                    sheetView->setFormulaRefHighlight(0, emptyList);
+                    sheetView->updateScreen();
+                }
+                else {
+                    // Check if current cell is a formula
+                    CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                    CxSheetCell *cell = sheetModel->getCellPtr(pos);
+
+                    if (cell != NULL && cell->cellType == CxSheetCell::FORMULA) {
+                        // Get the parsed formula expression
+                        CxExpression *expr = cell->formula;
+                        if (expr != NULL) {
+                            // Get list of variable names (cell references)
+                            CxSList<CxString> varList = expr->GetVariableList();
+                            CxSList<CxSheetCellCoordinate> refCells;
+
+                            // Convert variable names to coordinates
+                            CxSListIterator<CxString> iter = varList.begin();
+                            CxSListIterator<CxString> endIter = varList.end();
+                            while (iter != endIter) {
+                                CxString varName = *iter;
+                                ++iter;
+
+                                // Check if it's a range (contains :)
+                                int colonPos = varName.firstChar(':');
+                                if (colonPos >= 0) {
+                                    // Range like A1:C3 - expand to all cells
+                                    CxString startAddr = varName.subString(0, colonPos);
+                                    CxString endAddr = varName.subString(colonPos + 1,
+                                                                         varName.length() - colonPos - 1);
+                                    CxSheetCellCoordinate startCoord(startAddr);
+                                    CxSheetCellCoordinate endCoord(endAddr);
+
+                                    // Get bounds (normalize in case they're reversed)
+                                    int minRow = (int)startCoord.getRow();
+                                    int maxRow = (int)endCoord.getRow();
+                                    int minCol = (int)startCoord.getCol();
+                                    int maxCol = (int)endCoord.getCol();
+                                    if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
+                                    if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+
+                                    // Add all cells in range
+                                    for (int r = minRow; r <= maxRow; r++) {
+                                        for (int c = minCol; c <= maxCol; c++) {
+                                            refCells.append(CxSheetCellCoordinate(r, c));
+                                        }
+                                    }
+                                }
+                                else {
+                                    // Single cell reference
+                                    refCells.append(CxSheetCellCoordinate(varName));
+                                }
+                            }
+
+                            // Enable highlighting if we have any references
+                            if (refCells.entries() > 0) {
+                                sheetView->setFormulaRefHighlight(1, refCells);
+                                sheetView->updateScreen();
+                            }
+                        }
+                    }
+                }
             }
         }
         break;

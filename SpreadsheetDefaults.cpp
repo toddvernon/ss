@@ -61,6 +61,10 @@ SpreadsheetDefaults::SpreadsheetDefaults(void)
     // Range selection colors - light blue fill to distinguish from cursor highlight
     _rangeSelectTextColor       = new CxRGBForegroundColor(40, 40, 60);   // dark text
     _rangeSelectBackgroundColor = new CxRGBBackgroundColor(180, 200, 230); // light blue
+
+    // Formula reference highlight colors - yellow to show which cells a formula references
+    _formulaRefTextColor       = new CxRGBForegroundColor(40, 40, 40);    // dark text
+    _formulaRefBackgroundColor = new CxRGBBackgroundColor(255, 255, 150); // yellow background
 }
 
 
@@ -471,6 +475,12 @@ void SpreadsheetDefaults::applyRangeSelectColors(CxScreen *screen)
 {
     screen->setForegroundColor(_rangeSelectTextColor);
     screen->setBackgroundColor(_rangeSelectBackgroundColor);
+}
+
+void SpreadsheetDefaults::applyFormulaRefColors(CxScreen *screen)
+{
+    screen->setForegroundColor(_formulaRefTextColor);
+    screen->setBackgroundColor(_formulaRefBackgroundColor);
 }
 
 void SpreadsheetDefaults::resetColors(CxScreen *screen)

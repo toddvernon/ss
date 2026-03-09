@@ -91,6 +91,7 @@ public:
     void applyCellHuntColors(CxScreen *screen);
     void applyCellHuntRangeColors(CxScreen *screen);
     void applyRangeSelectColors(CxScreen *screen);
+    void applyFormulaRefColors(CxScreen *screen);
     void resetColors(CxScreen *screen);
 
     void writeDefaults(CxString fname);
@@ -147,6 +148,10 @@ private:
     // Range selection colors
     CxColor *_rangeSelectTextColor;
     CxColor *_rangeSelectBackgroundColor;
+
+    // Formula reference highlight colors
+    CxColor *_formulaRefTextColor;
+    CxColor *_formulaRefBackgroundColor;
 
     CxJSONBase *_baseNode;
 };
