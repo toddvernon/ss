@@ -68,8 +68,10 @@ CxSheetCellCoordinate _rangeCurrent;
 **Commands:**
 | Command | Shortcut | Action |
 |---------|----------|--------|
-| `edit-copy-down` | `Ctrl-D` | Copy top row down through selection |
+| `edit-copy-down` | TBD | Copy top row down through selection |
 | `edit-copy-right` | `Ctrl-R` | Copy left column right through selection |
+
+**Note:** Ctrl-D is now used for date format cycling.
 
 **Behavior:**
 - Requires range selection
@@ -116,6 +118,10 @@ Display: `|$     1,234.56|`
 - `modify-cell-number-percent` - toggle percent format
 - `modify-cell-number-thousands` - toggle thousands separators
 
+**Keyboard shortcuts:**
+- `Ctrl-N` or `Ctrl-4` - cycle number formats (plain → $,.2 → $,.0 → ,.2)
+- `Ctrl-5` - toggle percent format
+
 **JSON storage:**
 ```json
 {
@@ -139,39 +145,101 @@ Display: `|$     1,234.56|`
 - `modify-cell-align-center`
 - `modify-cell-align-right`
 
+**Keyboard shortcuts:**
+- `Ctrl-A` - cycle alignment (left → center → right)
+
 **With range selection:**
 - Applies to all cells in range
 
 ---
 
-## Phase 8: Colors (Deferred)
+## Phase 8: Colors ✓
 
-Requires popup UI similar to cm's project window.
-
-**Attributes:**
-- `textColor` - foreground color
-- `backgroundColor` - cell background
+**Commands:**
+- `modify-cell-color-fg` - set cell foreground color
+- `modify-cell-color-bg` - set cell background color
+- `modify-col-color-fg` - set column default foreground
+- `modify-col-color-bg` - set column default background
 
 **UI:**
-- Visual color picker popup
-- Named colors and/or RGB selection
-- Preview before applying
+- RGB color palette picker (ESC command triggers picker)
+- Arrow keys to navigate, Enter to select, ESC to cancel
+- Colors displayed as blocks in command line format indicator
+
+**Attributes:**
+- `fgColor` - foreground color (RGB string)
+- `bgColor` - cell background (RGB string)
 
 ---
 
-## Phase 9: Row Operations
+## Phase 9: Row/Column Operations (Partial)
 
-**Commands:**
+**Implemented:**
+- `insert-row` - insert row above cursor ✓
+- `delete-row` - delete current row ✓
+- `insert-column` - insert column before cursor ✓
+- `delete-column` - delete current column ✓
+
+**Not implemented:**
 - `modify-hide-row` - hide selected row(s)
 - `modify-show-row` - unhide
-- `insert-row` - insert row above cursor
-- `delete-row` - delete current row
+- `modify-hide-column` - hide selected column(s)
+- `modify-show-column` - unhide
 
-**Column equivalents:**
-- `modify-hide-column`
-- `modify-show-column`
-- `insert-column`
-- `delete-column`
+---
+
+## Phase 10: Post-Commit Parsing (Excel-style Input) ✓
+
+**Implemented:** Flexible input with post-commit type inference.
+
+**Input modes:**
+```
+First char    Mode              Accepts
+─────────────────────────────────────────
+=             ENTRY_FORMULA     (special formula mode)
+@             ENTRY_TEXTMAP     (textmap rules)
+anything else ENTRY_GENERAL     all printable chars
+```
+
+At commit time, input is parsed to determine type:
+1. Try date patterns → serial double + dateFormat
+2. Try number (with optional $, %, commas) → double + format attrs
+3. Otherwise → text
+
+**Date patterns recognized:**
+```
+10/20/2026    mm/dd/yyyy
+2026-10-20    yyyy-mm-dd  (ISO)
+10-20-2026    mm-dd-yyyy
+2026/10/20    yyyy/mm/dd
+```
+
+**Keyboard shortcuts:**
+- `Ctrl-D` - cycle date formats (yyyy-mm-dd → yyyy/mm/dd → mm/dd/yyyy → mm-dd-yyyy)
+
+**Number patterns (input implies format):**
+```
+Input           Stored    Format attributes
+───────────────────────────────────────────────
+1234.56         1234.56   (none)
+1,234.56        1234.56   thousands=true
+$1234.56        1234.56   currency=true
+$1,234.56       1234.56   currency=true, thousands=true
+50%             0.5       percent=true
+-1,234.56       -1234.56  thousands=true
+```
+
+**JSON storage:**
+```json
+{
+  "cell": "A1",
+  "type": "double",
+  "value": 46318,
+  "format": {
+    "dateFormat": "mm/dd/yyyy"
+  }
+}
+```
 
 ---
 
@@ -221,97 +289,25 @@ Requires popup UI similar to cm's project window.
 
 ---
 
-## Phase 10: Post-Commit Parsing (Excel-style Input)
+## Implementation Status
 
-**Architectural change:** Switch from strict per-character validation to flexible input with post-commit type inference.
-
-**Current approach (problematic):**
-```
-First char    Mode              Rejects
-─────────────────────────────────────────
-digit/+/-     ENTRY_NUMBER      / and letters
-letter        ENTRY_TEXT        (none)
-$             ENTRY_CURRENCY    letters
-=             ENTRY_FORMULA     (special)
-```
-Result: `10/20/2026` fails because `/` is rejected in number mode.
-
-**New approach (Excel-style):**
-```
-First char    Mode              Accepts
-─────────────────────────────────────────
-=             ENTRY_FORMULA     (unchanged - special)
-anything else ENTRY_GENERAL     all printable chars
-```
-
-At commit time, parse the input to determine type:
-1. Try date patterns → serial double + dateFormat
-2. Try number (with optional $, %, commas) → double + format attrs
-3. Otherwise → text
-
-**Date patterns to recognize:**
-```
-10/20/2026    mm/dd/yyyy
-2026-10-20    yyyy-mm-dd  (ISO)
-10-20-2026    mm-dd-yyyy
-20-Oct-2026   dd-mon-yyyy
-Oct 20, 2026  mon dd, yyyy
-```
-
-**Number patterns (input implies format):**
-```
-Input           Stored    Format attributes
-───────────────────────────────────────────────
-1234.56         1234.56   (none)
-1,234.56        1234.56   thousands=true
-$1234.56        1234.56   currency=true
-$1,234.56       1234.56   currency=true, thousands=true
-50%             0.5       percent=true
--1,234.56       -1234.56  thousands=true
-```
-
-**Output formatting commands:**
-- `modify-cell-date-mdy` - mm/dd/yyyy
-- `modify-cell-date-ymd` - yyyy-mm-dd
-- `modify-cell-date-dmy` - dd/mm/yyyy
-- `modify-cell-date-long` - "October 20, 2026"
-
-**Time support (future):**
-- `TIME(h,m,s)` function (fractional day)
-- `HOUR()`, `MINUTE()`, `SECOND()` extraction
-- Input patterns: `10:30`, `10:30:45`, `10:30 PM`
-
-**JSON storage:**
-```json
-{
-  "cell": "A1",
-  "type": "double",
-  "value": 46318,
-  "format": {
-    "dateFormat": "mm/dd/yyyy"
-  }
-}
-```
-
-**Implementation steps:**
-1. Collapse ENTRY_TEXT/NUMBER/CURRENCY into ENTRY_GENERAL
-2. Accept all printable chars (except = which stays ENTRY_FORMULA)
-3. At commit: parse input with tryParseDate(), tryParseNumber()
-4. Set cell type + format attributes based on parse result
-5. Add date display formatting in SheetView
-6. Add modify-cell-date-* commands
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 1 | Range Selection | ✓ Complete |
+| 2 | Column Width | ✓ Complete |
+| 3 | Copy/Paste | ✓ Complete |
+| 4 | Fill Operations | Not started |
+| 5 | Freeze Panes | Not started |
+| 6 | Number Formatting | ✓ Complete |
+| 7 | Alignment | ✓ Complete |
+| 8 | Colors | ✓ Complete |
+| 9 | Row/Column Operations | Partial (hide/show remaining) |
+| 10 | Post-Commit Parsing | ✓ Complete |
 
 ---
 
-## Implementation Order
+## Remaining Work
 
-1. ✓ Range selection in EDIT mode
-2. ✓ Column width (modify-col-width, modify-col-fit)
-3. ✓ Copy/paste with reference adjustment (Ctrl-K, Ctrl-Y)
-4. ✓ Number formatting (modify-cell-number-*)
-5. ✓ Alignment (modify-cell-align-*)
-6. **Post-commit parsing (Phase 10)** ← NEXT PRIORITY
-7. Fill operations (Ctrl-D, Ctrl-R)
-8. Freeze panes
-9. Row/column hide/show/insert/delete
-10. Colors (requires popup UI)
+1. **Fill Operations (Phase 4)** - copy-down, copy-right
+2. **Freeze Panes (Phase 5)** - lock rows/columns while scrolling
+3. **Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations
