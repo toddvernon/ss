@@ -522,6 +522,14 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                 // Ctrl-N or Ctrl-4: cycle number formats
                 cycleNumberFormat();
             }
+            else if (tag == "A") {
+                // Ctrl-A: cycle alignment
+                cycleAlignment();
+            }
+            else if (tag == "<GS>") {
+                // Ctrl-5: toggle percent format
+                togglePercentFormat();
+            }
         }
         break;
 
@@ -3227,18 +3235,160 @@ SheetEditor::cycleNumberFormat(void)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
-
     sheetView->updateScreen();
     resetPrompt();
 
     // Show format message
     const char *formatNames[] = { "plain", "$,.2", "$,.0", ",.2" };
     setMessage(formatNames[nextState]);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::cycleAlignment
+//
+// Cycle through alignment options on the current selection (or current cell).
+// Cycle: left → center → right → left
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::cycleAlignment(void)
+{
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    // Determine current alignment from first cell to decide next state
+    // States: 0=left, 1=center, 2=right
+    int currentState = 0;
+    CxSheetCellCoordinate firstCoord;
+    firstCoord.setRow(minRow);
+    firstCoord.setCol(minCol);
+    CxSheetCell *firstCell = sheetModel->getCellPtr(firstCoord);
+
+    if (firstCell != NULL && firstCell->hasAppAttribute("align")) {
+        CxString align = firstCell->getAppAttributeString("align");
+        if (align == "center") {
+            currentState = 1;
+        } else if (align == "right") {
+            currentState = 2;
+        }
+        // else left or unknown = 0
+    }
+
+    // Advance to next state
+    int nextState = (currentState + 1) % 3;
+    const char *alignments[] = { "left", "center", "right" };
+
+    // Apply next state to all cells in range
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                sheetModel->setCell(coord, newCell);
+                cell = sheetModel->getCellPtr(coord);
+            }
+
+            if (cell != NULL) {
+                cell->setAppAttribute("align", alignments[nextState]);
+            }
+        }
+    }
+
+    sheetView->updateScreen();
+    resetPrompt();
+
+    setMessage(alignments[nextState]);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::togglePercentFormat
+//
+// Toggle percent format on the current selection (or current cell).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::togglePercentFormat(void)
+{
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    // Determine current state from first cell
+    int currentlyPercent = 0;
+    CxSheetCellCoordinate firstCoord;
+    firstCoord.setRow(minRow);
+    firstCoord.setCol(minCol);
+    CxSheetCell *firstCell = sheetModel->getCellPtr(firstCoord);
+
+    if (firstCell != NULL) {
+        currentlyPercent = firstCell->getAppAttributeBool("percent", false) ? 1 : 0;
+    }
+
+    int newState = currentlyPercent ? 0 : 1;
+
+    // Apply to all cells in range
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                sheetModel->setCell(coord, newCell);
+                cell = sheetModel->getCellPtr(coord);
+            }
+
+            if (cell != NULL) {
+                if (newState) {
+                    cell->setAppAttribute("percent", true);
+                } else {
+                    cell->removeAppAttribute("percent");
+                }
+            }
+        }
+    }
+
+    sheetView->updateScreen();
+    resetPrompt();
+
+    setMessage(newState ? "percent" : "plain");
 }
 
 
