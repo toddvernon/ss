@@ -63,6 +63,8 @@ edit-
   edit-cut                    Cut selection to clipboard
   edit-paste                  Paste from clipboard
   edit-clear                  Clear cell contents
+  edit-fill-down              Fill selection down from first row
+  edit-fill-right             Fill selection right from first column
 
 insert-
   insert-row-before           Insert row before cursor

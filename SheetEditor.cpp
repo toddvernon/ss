@@ -2979,6 +2979,166 @@ SheetEditor::CMD_Clear(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FillDown
+//
+// Fill the selection down from the first row. The source row (first row of selection) is
+// copied to all subsequent rows, adjusting relative row references in formulas.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FillDown(CxString commandLine)
+{
+    (void)commandLine;
+
+    // Must have range selection
+    if (!_rangeSelectActive) {
+        setMessage("Select a range first (Shift+Arrow)");
+        return;
+    }
+
+    // Normalize range
+    int minRow = _rangeAnchor.getRow();
+    int maxRow = _rangeCurrent.getRow();
+    if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
+
+    int minCol = _rangeAnchor.getCol();
+    int maxCol = _rangeCurrent.getCol();
+    if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+
+    // Need at least 2 rows
+    if (maxRow - minRow < 1) {
+        setMessage("Need at least 2 rows to fill down");
+        return;
+    }
+
+    // Source is first row (minRow)
+    // For each column in range, fill source cell down through remaining rows
+    for (int col = minCol; col <= maxCol; col++) {
+        // Get source cell
+        CxSheetCellCoordinate srcCoord;
+        srcCoord.setRow(minRow);
+        srcCoord.setCol(col);
+        CxSheetCell *srcPtr = sheetModel->getCellPtr(srcCoord);
+
+        CxSheetCell srcCell;
+        if (srcPtr != NULL) {
+            srcCell = *srcPtr;
+        }
+
+        // Fill to each row below
+        for (int row = minRow + 1; row <= maxRow; row++) {
+            int rowDelta = row - minRow;
+
+            CxSheetCellCoordinate dstCoord;
+            dstCoord.setRow(row);
+            dstCoord.setCol(col);
+
+            CxSheetCell newCell = srcCell;
+
+            // Adjust formula references (row delta only)
+            if (newCell.getType() == CxSheetCell::FORMULA) {
+                CxString adjusted = adjustFormulaReferences(
+                    newCell.getFormulaText(), rowDelta, 0);
+                newCell.setFormula(adjusted);
+            }
+
+            sheetModel->setCell(dstCoord, newCell);
+        }
+    }
+
+    // Clear selection
+    _rangeSelectActive = 0;
+    sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    sheetView->updateScreen();
+
+    int rowsFilled = maxRow - minRow;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "(Filled down %d row%s)",
+             rowsFilled, rowsFilled == 1 ? "" : "s");
+    setMessage(buf);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_FillRight
+//
+// Fill the selection right from the first column. The source column (first column of selection)
+// is copied to all subsequent columns, adjusting relative column references in formulas.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_FillRight(CxString commandLine)
+{
+    (void)commandLine;
+
+    // Must have range selection
+    if (!_rangeSelectActive) {
+        setMessage("Select a range first (Shift+Arrow)");
+        return;
+    }
+
+    // Normalize range
+    int minRow = _rangeAnchor.getRow();
+    int maxRow = _rangeCurrent.getRow();
+    if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
+
+    int minCol = _rangeAnchor.getCol();
+    int maxCol = _rangeCurrent.getCol();
+    if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+
+    // Need at least 2 columns
+    if (maxCol - minCol < 1) {
+        setMessage("Need at least 2 columns to fill right");
+        return;
+    }
+
+    // Source is first column (minCol)
+    // For each row in range, fill source cell right through remaining columns
+    for (int row = minRow; row <= maxRow; row++) {
+        // Get source cell
+        CxSheetCellCoordinate srcCoord;
+        srcCoord.setRow(row);
+        srcCoord.setCol(minCol);
+        CxSheetCell *srcPtr = sheetModel->getCellPtr(srcCoord);
+
+        CxSheetCell srcCell;
+        if (srcPtr != NULL) {
+            srcCell = *srcPtr;
+        }
+
+        // Fill to each column to the right
+        for (int col = minCol + 1; col <= maxCol; col++) {
+            int colDelta = col - minCol;
+
+            CxSheetCellCoordinate dstCoord;
+            dstCoord.setRow(row);
+            dstCoord.setCol(col);
+
+            CxSheetCell newCell = srcCell;
+
+            // Adjust formula references (col delta only)
+            if (newCell.getType() == CxSheetCell::FORMULA) {
+                CxString adjusted = adjustFormulaReferences(
+                    newCell.getFormulaText(), 0, colDelta);
+                newCell.setFormula(adjusted);
+            }
+
+            sheetModel->setCell(dstCoord, newCell);
+        }
+    }
+
+    // Clear selection
+    _rangeSelectActive = 0;
+    sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    sheetView->updateScreen();
+
+    int colsFilled = maxCol - minCol;
+    char buf[64];
+    snprintf(buf, sizeof(buf), "(Filled right %d column%s)",
+             colsFilled, colsFilled == 1 ? "" : "s");
+    setMessage(buf);
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::CMD_FormatCellAlignLeft
 //
 // Set left alignment on the current selection (or current cell if no selection).

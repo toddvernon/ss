@@ -74,6 +74,20 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_Clear,
       NULL },
 
+    { "edit-fill-down",
+      NULL,
+      "Fill selection down from first row",
+      0,
+      &SheetEditor::CMD_FillDown,
+      NULL },
+
+    { "edit-fill-right",
+      NULL,
+      "Fill selection right from first column",
+      0,
+      &SheetEditor::CMD_FillRight,
+      NULL },
+
     //--- modify-col- (column operations) ----------------------------------------
     { "modify-col-width",
       "<+n|-n>",

@@ -63,20 +63,19 @@ CxSheetCellCoordinate _rangeCurrent;
 
 ---
 
-## Phase 4: Fill Operations
+## Phase 4: Fill Operations ✓
 
 **Commands:**
-| Command | Shortcut | Action |
-|---------|----------|--------|
-| `edit-copy-down` | TBD | Copy top row down through selection |
-| `edit-copy-right` | `Ctrl-R` | Copy left column right through selection |
-
-**Note:** Ctrl-D is now used for date format cycling.
+| Command | Action |
+|---------|--------|
+| `edit-fill-down` | Fill first row down through selection |
+| `edit-fill-right` | Fill first column right through selection |
 
 **Behavior:**
-- Requires range selection
-- Copies formula/value from edge row/column
-- References adjust row-by-row or column-by-column
+- Requires range selection (at least 2 rows/columns)
+- Copies formula/value from first row/column
+- Relative references adjust row-by-row or column-by-column
+- Absolute references ($) are preserved
 
 ---
 
@@ -313,7 +312,7 @@ $1,234.56       1234.56   currency=true, thousands=true
 | 1 | Range Selection | ✓ Complete |
 | 2 | Column Width | ✓ Complete |
 | 3 | Copy/Paste | ✓ Complete |
-| 4 | Fill Operations | Not started |
+| 4 | Fill Operations | ✓ Complete |
 | 5 | Freeze Panes | Not started |
 | 6 | Number Formatting | ✓ Complete |
 | 7 | Alignment | ✓ Complete |
@@ -326,6 +325,5 @@ $1,234.56       1234.56   currency=true, thousands=true
 
 ## Remaining Work
 
-1. **Fill Operations (Phase 4)** - copy-down, copy-right
-2. **Freeze Panes (Phase 5)** - lock rows/columns while scrolling
-3. **Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations
+1. **Freeze Panes (Phase 5)** - lock rows/columns while scrolling
+2. **Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations

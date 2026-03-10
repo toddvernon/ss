@@ -142,6 +142,8 @@ class SheetEditor {
     void CMD_Cut(CxString commandLine);
     void CMD_Paste(CxString commandLine);
     void CMD_Clear(CxString commandLine);
+    void CMD_FillDown(CxString commandLine);
+    void CMD_FillRight(CxString commandLine);
     void CMD_FormatColWidth(CxString commandLine);
     void CMD_FormatColFit(CxString commandLine);
     void CMD_FormatCellAlignLeft(CxString commandLine);
