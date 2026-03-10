@@ -177,6 +177,7 @@ class SheetEditor {
     void cycleNumberFormat(void);
     void cycleAlignment(void);
     void togglePercentFormat(void);
+    void cycleDateFormat(void);
 
     ProgramMode programMode;
 

@@ -530,6 +530,10 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                 // Ctrl-5: toggle percent format
                 togglePercentFormat();
             }
+            else if (tag == "D") {
+                // Ctrl-D: cycle date formats
+                cycleDateFormat();
+            }
         }
         break;
 
@@ -3389,6 +3393,97 @@ SheetEditor::togglePercentFormat(void)
     resetPrompt();
 
     setMessage(newState ? "percent" : "plain");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::cycleDateFormat
+//
+// Cycle through date formats on the current selection (or current cell).
+// Cycle: yyyy-mm-dd → yyyy/mm/dd → mm/dd/yyyy → mm-dd-yyyy → yyyy-mm-dd
+// Only applies to cells that have a dateFormat attribute set.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::cycleDateFormat(void)
+{
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    // Date format cycle
+    const char *formats[] = { "yyyy-mm-dd", "yyyy/mm/dd", "mm/dd/yyyy", "mm-dd-yyyy" };
+    int numFormats = 4;
+
+    // Determine current format from first cell that has dateFormat
+    int currentIndex = -1;
+    CxString currentFormat;
+
+    for (int row = minRow; row <= maxRow && currentIndex < 0; row++) {
+        for (int col = minCol; col <= maxCol && currentIndex < 0; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+
+            if (cell != NULL && cell->hasAppAttribute("dateFormat")) {
+                currentFormat = cell->getAppAttributeString("dateFormat");
+                for (int i = 0; i < numFormats; i++) {
+                    if (currentFormat == formats[i]) {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+                if (currentIndex < 0) {
+                    // Unknown format - start at 0
+                    currentIndex = numFormats - 1;  // Will advance to 0
+                }
+            }
+        }
+    }
+
+    if (currentIndex < 0) {
+        // No cells with date format in selection
+        setMessage("no date format");
+        return;
+    }
+
+    // Advance to next format
+    int nextIndex = (currentIndex + 1) % numFormats;
+    const char *nextFormat = formats[nextIndex];
+
+    // Apply to all cells in range that have dateFormat
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute("dateFormat")) {
+                cell->setAppAttribute("dateFormat", nextFormat);
+            }
+        }
+    }
+
+    sheetView->updateScreen();
+    resetPrompt();
+
+    setMessage(nextFormat);
 }
 
 
