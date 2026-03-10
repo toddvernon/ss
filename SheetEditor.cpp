@@ -488,14 +488,8 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
         //-------------------------------------------------------------------------------------
         case CxKeyAction::BACKSPACE:
         {
-            CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
-            CxSheetCell *cell = sheetModel->getCellPtr(pos);
-            if (cell != NULL) {
-                cell->clear();
-                cell->removeAppAttribute("symbolFill");
-                sheetView->updateScreen();
-                resetPrompt();
-            }
+            // Clear selected range or current cell
+            CMD_Clear("");
         }
         break;
 
@@ -611,6 +605,10 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                         }
                     }
                 }
+            }
+            else if (tag == "<option-delete>") {
+                // Delete key: clear selected range or current cell
+                CMD_Clear("");
             }
         }
         break;
@@ -3143,7 +3141,60 @@ SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
 //
 // Cycle through number formats on the current selection (or current cell).
 // Cycle: plain → $,.2 → $,.0 → ,.2 → plain
+// If range has mixed formats, first press syncs to first cell's format.
 //-------------------------------------------------------------------------------------------------
+
+// Helper to get number format state from a cell
+// Returns: 0=plain, 1=$,.2, 2=$,.0, 3=,.2
+static int getNumberFormatState(CxSheetCell *cell)
+{
+    if (cell == NULL) return 0;
+
+    int hasCurrency = cell->getAppAttributeBool("currency", false) ? 1 : 0;
+    int hasThousands = cell->getAppAttributeBool("thousands", false) ? 1 : 0;
+    int decimals = cell->getAppAttributeInt("decimalPlaces", -1);
+
+    if (hasCurrency && hasThousands && decimals == 2) {
+        return 1;  // $,.2
+    } else if (hasCurrency && hasThousands && decimals == 0) {
+        return 2;  // $,.0
+    } else if (!hasCurrency && hasThousands && decimals == 2) {
+        return 3;  // ,.2
+    } else if (hasCurrency || hasThousands || decimals >= 0) {
+        return 3;  // Some other format - treat as state 3
+    }
+    return 0;  // plain
+}
+
+// Helper to apply number format state to a cell
+static void applyNumberFormatState(CxSheetCell *cell, int state)
+{
+    if (cell == NULL) return;
+
+    switch (state) {
+        case 0:  // plain
+            cell->removeAppAttribute("currency");
+            cell->removeAppAttribute("thousands");
+            cell->removeAppAttribute("decimalPlaces");
+            break;
+        case 1:  // $,.2
+            cell->setAppAttribute("currency", true);
+            cell->setAppAttribute("thousands", true);
+            cell->setAppAttribute("decimalPlaces", 2);
+            break;
+        case 2:  // $,.0
+            cell->setAppAttribute("currency", true);
+            cell->setAppAttribute("thousands", true);
+            cell->setAppAttribute("decimalPlaces", 0);
+            break;
+        case 3:  // ,.2
+            cell->removeAppAttribute("currency");
+            cell->setAppAttribute("thousands", true);
+            cell->setAppAttribute("decimalPlaces", 2);
+            break;
+    }
+}
+
 void
 SheetEditor::cycleNumberFormat(void)
 {
@@ -3166,36 +3217,31 @@ SheetEditor::cycleNumberFormat(void)
     int maxCol = end.getCol();
     if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
 
-    // Determine current state from first cell to decide next state
-    // States: 0=plain, 1=$,.2, 2=$,.0, 3=,.2
-    int currentState = 0;
+    // Get first cell's state
     CxSheetCellCoordinate firstCoord;
     firstCoord.setRow(minRow);
     firstCoord.setCol(minCol);
     CxSheetCell *firstCell = sheetModel->getCellPtr(firstCoord);
+    int firstState = getNumberFormatState(firstCell);
 
-    if (firstCell != NULL) {
-        int hasCurrency = firstCell->getAppAttributeBool("currency", false) ? 1 : 0;
-        int hasThousands = firstCell->getAppAttributeBool("thousands", false) ? 1 : 0;
-        int decimals = firstCell->getAppAttributeInt("decimalPlaces", -1);
-
-        if (hasCurrency && hasThousands && decimals == 2) {
-            currentState = 1;  // $,.2
-        } else if (hasCurrency && hasThousands && decimals == 0) {
-            currentState = 2;  // $,.0
-        } else if (!hasCurrency && hasThousands && decimals == 2) {
-            currentState = 3;  // ,.2
-        } else if (hasCurrency || hasThousands || decimals >= 0) {
-            // Some other format - treat as state 3 so next is plain
-            currentState = 3;
+    // Check if all cells have the same state
+    int allSame = 1;
+    for (int row = minRow; row <= maxRow && allSame; row++) {
+        for (int col = minCol; col <= maxCol && allSame; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (getNumberFormatState(cell) != firstState) {
+                allSame = 0;
+            }
         }
-        // else currentState = 0 (plain)
     }
 
-    // Advance to next state
-    int nextState = (currentState + 1) % 4;
+    // If mixed, sync to first cell's format; otherwise advance to next
+    int targetState = allSame ? ((firstState + 1) % 4) : firstState;
 
-    // Apply next state to all cells in range
+    // Apply target state to all cells in range
     for (int row = minRow; row <= maxRow; row++) {
         for (int col = minCol; col <= maxCol; col++) {
             CxSheetCellCoordinate coord;
@@ -3203,48 +3249,21 @@ SheetEditor::cycleNumberFormat(void)
             coord.setCol(col);
 
             CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                // Create cell if applying formatting
-                if (nextState != 0) {
-                    CxSheetCell newCell;
-                    sheetModel->setCell(coord, newCell);
-                    cell = sheetModel->getCellPtr(coord);
-                }
+            if (cell == NULL && targetState != 0) {
+                CxSheetCell newCell;
+                sheetModel->setCell(coord, newCell);
+                cell = sheetModel->getCellPtr(coord);
             }
 
-            if (cell != NULL) {
-                switch (nextState) {
-                    case 0:  // plain
-                        cell->removeAppAttribute("currency");
-                        cell->removeAppAttribute("thousands");
-                        cell->removeAppAttribute("decimalPlaces");
-                        break;
-                    case 1:  // $,.2
-                        cell->setAppAttribute("currency", true);
-                        cell->setAppAttribute("thousands", true);
-                        cell->setAppAttribute("decimalPlaces", 2);
-                        break;
-                    case 2:  // $,.0
-                        cell->setAppAttribute("currency", true);
-                        cell->setAppAttribute("thousands", true);
-                        cell->setAppAttribute("decimalPlaces", 0);
-                        break;
-                    case 3:  // ,.2
-                        cell->removeAppAttribute("currency");
-                        cell->setAppAttribute("thousands", true);
-                        cell->setAppAttribute("decimalPlaces", 2);
-                        break;
-                }
-            }
+            applyNumberFormatState(cell, targetState);
         }
     }
 
     sheetView->updateScreen();
     resetPrompt();
 
-    // Show format message
     const char *formatNames[] = { "plain", "$,.2", "$,.0", ",.2" };
-    setMessage(formatNames[nextState]);
+    setMessage(formatNames[targetState]);
 }
 
 
@@ -3253,7 +3272,21 @@ SheetEditor::cycleNumberFormat(void)
 //
 // Cycle through alignment options on the current selection (or current cell).
 // Cycle: left → center → right → left
+// If range has mixed alignments, first press syncs to first cell's alignment.
 //-------------------------------------------------------------------------------------------------
+
+// Helper to get alignment state from a cell
+// Returns: 0=left, 1=center, 2=right
+static int getAlignmentState(CxSheetCell *cell)
+{
+    if (cell == NULL || !cell->hasAppAttribute("align")) return 0;
+
+    CxString align = cell->getAppAttributeString("align");
+    if (align == "center") return 1;
+    if (align == "right") return 2;
+    return 0;  // left or unknown
+}
+
 void
 SheetEditor::cycleAlignment(void)
 {
@@ -3276,29 +3309,32 @@ SheetEditor::cycleAlignment(void)
     int maxCol = end.getCol();
     if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
 
-    // Determine current alignment from first cell to decide next state
-    // States: 0=left, 1=center, 2=right
-    int currentState = 0;
+    // Get first cell's state
     CxSheetCellCoordinate firstCoord;
     firstCoord.setRow(minRow);
     firstCoord.setCol(minCol);
     CxSheetCell *firstCell = sheetModel->getCellPtr(firstCoord);
+    int firstState = getAlignmentState(firstCell);
 
-    if (firstCell != NULL && firstCell->hasAppAttribute("align")) {
-        CxString align = firstCell->getAppAttributeString("align");
-        if (align == "center") {
-            currentState = 1;
-        } else if (align == "right") {
-            currentState = 2;
+    // Check if all cells have the same state
+    int allSame = 1;
+    for (int row = minRow; row <= maxRow && allSame; row++) {
+        for (int col = minCol; col <= maxCol && allSame; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (getAlignmentState(cell) != firstState) {
+                allSame = 0;
+            }
         }
-        // else left or unknown = 0
     }
 
-    // Advance to next state
-    int nextState = (currentState + 1) % 3;
+    // If mixed, sync to first cell's alignment; otherwise advance to next
+    int targetState = allSame ? ((firstState + 1) % 3) : firstState;
     const char *alignments[] = { "left", "center", "right" };
 
-    // Apply next state to all cells in range
+    // Apply target state to all cells in range
     for (int row = minRow; row <= maxRow; row++) {
         for (int col = minCol; col <= maxCol; col++) {
             CxSheetCellCoordinate coord;
@@ -3313,7 +3349,7 @@ SheetEditor::cycleAlignment(void)
             }
 
             if (cell != NULL) {
-                cell->setAppAttribute("align", alignments[nextState]);
+                cell->setAppAttribute("align", alignments[targetState]);
             }
         }
     }
@@ -3321,7 +3357,7 @@ SheetEditor::cycleAlignment(void)
     sheetView->updateScreen();
     resetPrompt();
 
-    setMessage(alignments[nextState]);
+    setMessage(alignments[targetState]);
 }
 
 
@@ -3329,7 +3365,16 @@ SheetEditor::cycleAlignment(void)
 // SheetEditor::togglePercentFormat
 //
 // Toggle percent format on the current selection (or current cell).
+// If range has mixed percent states, first press syncs to first cell's state.
 //-------------------------------------------------------------------------------------------------
+
+// Helper to get percent state from a cell
+static int getPercentState(CxSheetCell *cell)
+{
+    if (cell == NULL) return 0;
+    return cell->getAppAttributeBool("percent", false) ? 1 : 0;
+}
+
 void
 SheetEditor::togglePercentFormat(void)
 {
@@ -3352,18 +3397,29 @@ SheetEditor::togglePercentFormat(void)
     int maxCol = end.getCol();
     if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
 
-    // Determine current state from first cell
-    int currentlyPercent = 0;
+    // Get first cell's state
     CxSheetCellCoordinate firstCoord;
     firstCoord.setRow(minRow);
     firstCoord.setCol(minCol);
     CxSheetCell *firstCell = sheetModel->getCellPtr(firstCoord);
+    int firstState = getPercentState(firstCell);
 
-    if (firstCell != NULL) {
-        currentlyPercent = firstCell->getAppAttributeBool("percent", false) ? 1 : 0;
+    // Check if all cells have the same state
+    int allSame = 1;
+    for (int row = minRow; row <= maxRow && allSame; row++) {
+        for (int col = minCol; col <= maxCol && allSame; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (getPercentState(cell) != firstState) {
+                allSame = 0;
+            }
+        }
     }
 
-    int newState = currentlyPercent ? 0 : 1;
+    // If mixed, sync to first cell's state; otherwise toggle
+    int targetState = allSame ? (firstState ? 0 : 1) : firstState;
 
     // Apply to all cells in range
     for (int row = minRow; row <= maxRow; row++) {
@@ -3380,7 +3436,7 @@ SheetEditor::togglePercentFormat(void)
             }
 
             if (cell != NULL) {
-                if (newState) {
+                if (targetState) {
                     cell->setAppAttribute("percent", true);
                 } else {
                     cell->removeAppAttribute("percent");
@@ -3392,7 +3448,7 @@ SheetEditor::togglePercentFormat(void)
     sheetView->updateScreen();
     resetPrompt();
 
-    setMessage(newState ? "percent" : "plain");
+    setMessage(targetState ? "percent" : "plain");
 }
 
 
@@ -3402,7 +3458,22 @@ SheetEditor::togglePercentFormat(void)
 // Cycle through date formats on the current selection (or current cell).
 // Cycle: yyyy-mm-dd → yyyy/mm/dd → mm/dd/yyyy → mm-dd-yyyy → yyyy-mm-dd
 // Only applies to cells that have a dateFormat attribute set.
+// If range has mixed formats, first press syncs to first cell's format.
 //-------------------------------------------------------------------------------------------------
+
+// Helper to get date format index from a cell
+// Returns: 0-3 for known formats, -1 for no dateFormat or unknown
+static int getDateFormatIndex(CxSheetCell *cell, const char *formats[], int numFormats)
+{
+    if (cell == NULL || !cell->hasAppAttribute("dateFormat")) return -1;
+
+    CxString fmt = cell->getAppAttributeString("dateFormat");
+    for (int i = 0; i < numFormats; i++) {
+        if (fmt == formats[i]) return i;
+    }
+    return -1;  // unknown format
+}
+
 void
 SheetEditor::cycleDateFormat(void)
 {
@@ -3429,42 +3500,49 @@ SheetEditor::cycleDateFormat(void)
     const char *formats[] = { "yyyy-mm-dd", "yyyy/mm/dd", "mm/dd/yyyy", "mm-dd-yyyy" };
     int numFormats = 4;
 
-    // Determine current format from first cell that has dateFormat
-    int currentIndex = -1;
-    CxString currentFormat;
-
-    for (int row = minRow; row <= maxRow && currentIndex < 0; row++) {
-        for (int col = minCol; col <= maxCol && currentIndex < 0; col++) {
+    // Find first cell with dateFormat to get its index
+    int firstIndex = -1;
+    for (int row = minRow; row <= maxRow && firstIndex < 0; row++) {
+        for (int col = minCol; col <= maxCol && firstIndex < 0; col++) {
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
             CxSheetCell *cell = sheetModel->getCellPtr(coord);
-
-            if (cell != NULL && cell->hasAppAttribute("dateFormat")) {
-                currentFormat = cell->getAppAttributeString("dateFormat");
-                for (int i = 0; i < numFormats; i++) {
-                    if (currentFormat == formats[i]) {
-                        currentIndex = i;
-                        break;
-                    }
-                }
-                if (currentIndex < 0) {
-                    // Unknown format - start at 0
-                    currentIndex = numFormats - 1;  // Will advance to 0
-                }
+            int idx = getDateFormatIndex(cell, formats, numFormats);
+            if (idx >= 0) {
+                firstIndex = idx;
+            } else if (cell != NULL && cell->hasAppAttribute("dateFormat")) {
+                // Unknown format - treat as index 3 so it advances to 0
+                firstIndex = numFormats - 1;
             }
         }
     }
 
-    if (currentIndex < 0) {
+    if (firstIndex < 0) {
         // No cells with date format in selection
         setMessage("no date format");
         return;
     }
 
-    // Advance to next format
-    int nextIndex = (currentIndex + 1) % numFormats;
-    const char *nextFormat = formats[nextIndex];
+    // Check if all date cells have the same format
+    int allSame = 1;
+    for (int row = minRow; row <= maxRow && allSame; row++) {
+        for (int col = minCol; col <= maxCol && allSame; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            int idx = getDateFormatIndex(cell, formats, numFormats);
+            // Only compare cells that have dateFormat
+            if (idx >= 0 && idx != firstIndex) {
+                allSame = 0;
+            }
+        }
+    }
+
+    // If mixed, sync to first cell's format; otherwise advance to next
+    int targetIndex = allSame ? ((firstIndex + 1) % numFormats) : firstIndex;
+    const char *targetFormat = formats[targetIndex];
 
     // Apply to all cells in range that have dateFormat
     for (int row = minRow; row <= maxRow; row++) {
@@ -3475,7 +3553,7 @@ SheetEditor::cycleDateFormat(void)
 
             CxSheetCell *cell = sheetModel->getCellPtr(coord);
             if (cell != NULL && cell->hasAppAttribute("dateFormat")) {
-                cell->setAppAttribute("dateFormat", nextFormat);
+                cell->setAppAttribute("dateFormat", targetFormat);
             }
         }
     }
@@ -3483,7 +3561,7 @@ SheetEditor::cycleDateFormat(void)
     sheetView->updateScreen();
     resetPrompt();
 
-    setMessage(nextFormat);
+    setMessage(targetFormat);
 }
 
 
