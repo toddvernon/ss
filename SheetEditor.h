@@ -27,6 +27,7 @@
 #include "MessageLineView.h"
 #include "CommandTable.h"
 #include "SpreadsheetDefaults.h"
+#include "HelpView.h"
 
 #ifndef _SheetEditor_h_
 #define _SheetEditor_h_
@@ -64,7 +65,8 @@ class SheetEditor {
     enum ProgramMode {
         EDIT,               // normal cell navigation mode
         COMMANDLINE,        // command prompt focused
-        DATA_ENTRY          // entering data into a cell
+        DATA_ENTRY,         // entering data into a cell
+        HELPVIEW            // help modal displayed
     };
 
     enum CommandInputState {
@@ -124,6 +126,10 @@ class SheetEditor {
     void focusCellHunt(CxKeyAction keyAction);
     void updateCellHuntDisplay(void);
     CxString buildCellHuntReference(void);
+
+    // help view methods
+    void showHelpView(void);
+    void focusHelpView(CxKeyAction keyAction);
 
     // command handlers
     void CMD_Quit(CxString commandLine);
@@ -186,6 +192,7 @@ class SheetEditor {
     SheetView  *sheetView;
     CommandLineView *commandLineView;
     MessageLineView *messageLineView;
+    HelpView   *helpView;
     CxSheetModel *sheetModel;
     SpreadsheetDefaults *spreadsheetDefaults;
 

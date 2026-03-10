@@ -39,6 +39,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , sheetView(NULL)
 , commandLineView(NULL)
 , messageLineView(NULL)
+, helpView(NULL)
 , sheetModel(NULL)
 , spreadsheetDefaults(NULL)
 , _filePath(filePath)
@@ -119,6 +120,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     sheetView = new SheetView(screen, sheetModel, spreadsheetDefaults, 0, sheetEndRow);
     commandLineView = new CommandLineView(screen, spreadsheetDefaults, sheetEndRow + 1);
     messageLineView = new MessageLineView(screen, spreadsheetDefaults, sheetEndRow + 2);
+    helpView = new HelpView(spreadsheetDefaults, screen);
 
     //---------------------------------------------------------------------------------------------
     // Load column widths from app data (if file was loaded)
@@ -201,6 +203,9 @@ SheetEditor::~SheetEditor(void)
     if (messageLineView != NULL) {
         delete messageLineView;
     }
+    if (helpView != NULL) {
+        delete helpView;
+    }
     if (sheetModel != NULL) {
         delete sheetModel;
     }
@@ -248,6 +253,10 @@ SheetEditor::run(void)
 
             case DATA_ENTRY:
                 focusDataEntry(keyAction);
+                break;
+
+            case HELPVIEW:
+                focusHelpView(keyAction);
                 break;
         }
 
@@ -527,6 +536,10 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
             else if (tag == "D") {
                 // Ctrl-D: cycle date formats
                 cycleDateFormat();
+            }
+            else if (tag == "H") {
+                // Ctrl-H: show help
+                showHelpView();
             }
         }
         break;
@@ -2449,6 +2462,66 @@ SheetEditor::buildCellHuntReference(void)
         // Single cell reference
         return _cellHuntCurrentPos.toAddress();
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::showHelpView
+//
+// Display the help modal and switch to HELPVIEW mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::showHelpView(void)
+{
+    screen->flush();
+    screen->hideCursor();
+    helpView->setVisible(1);
+    helpView->rebuildVisibleItems();
+    helpView->recalcScreenPlacements();
+    helpView->redraw();
+    programMode = HELPVIEW;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::focusHelpView
+//
+// Handle keyboard input when in HELPVIEW mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::focusHelpView(CxKeyAction keyAction)
+{
+    int action = keyAction.actionType();
+
+    // ESC - dismiss help view
+    if (action == CxKeyAction::COMMAND) {
+        helpView->setVisible(0);
+        programMode = EDIT;
+        sheetView->updateScreen();
+        resetPrompt();
+        screen->showCursor();
+        return;
+    }
+
+    // ENTER - toggle section expand/collapse or dismiss
+    if (action == CxKeyAction::NEWLINE) {
+        HelpViewItemType selType = helpView->getSelectedItemType();
+        if (selType == HELPITEM_SECTION) {
+            helpView->toggleSelectedSection();
+            helpView->redraw();
+        } else {
+            // Dismiss on content lines
+            helpView->setVisible(0);
+            programMode = EDIT;
+            sheetView->updateScreen();
+            resetPrompt();
+            screen->showCursor();
+        }
+        return;
+    }
+
+    // Route other keys (arrows for navigation)
+    helpView->routeKeyAction(keyAction);
 }
 
 

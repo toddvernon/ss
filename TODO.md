@@ -289,6 +289,23 @@ $1,234.56       1234.56   currency=true, thousands=true
 
 ---
 
+## Phase 11: Help System ✓
+
+**Keyboard shortcut:**
+- `Ctrl-H` - show help modal
+
+**Features:**
+- Collapsible markdown sections
+- Arrow key navigation
+- Enter to expand/collapse sections
+- ESC to dismiss
+
+**Files:**
+- `ss_help.md` - help content
+- `HelpView.h/cpp` - modal help view implementation
+
+---
+
 ## Implementation Status
 
 | Phase | Feature | Status |
@@ -303,6 +320,7 @@ $1,234.56       1234.56   currency=true, thousands=true
 | 8 | Colors | ✓ Complete |
 | 9 | Row/Column Operations | Partial (hide/show remaining) |
 | 10 | Post-Commit Parsing | ✓ Complete |
+| 11 | Help System | ✓ Complete |
 
 ---
 

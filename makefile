@@ -64,7 +64,8 @@ OBJECTS = \
 	$(APP_OBJECT_DIR)/CommandLineView.o      \
 	$(APP_OBJECT_DIR)/MessageLineView.o      \
 	$(APP_OBJECT_DIR)/CommandTable.o         \
-	$(APP_OBJECT_DIR)/SpreadsheetDefaults.o
+	$(APP_OBJECT_DIR)/SpreadsheetDefaults.o  \
+	$(APP_OBJECT_DIR)/HelpView.o
 
 ALL_OBJECTS = $(OBJECTS)
 
@@ -118,6 +119,7 @@ $(APP_OBJECT_DIR)/CommandLineView.o : CommandLineView.cpp
 $(APP_OBJECT_DIR)/MessageLineView.o : MessageLineView.cpp
 $(APP_OBJECT_DIR)/CommandTable.o	: CommandTable.cpp
 $(APP_OBJECT_DIR)/SpreadsheetDefaults.o : SpreadsheetDefaults.cpp
+$(APP_OBJECT_DIR)/HelpView.o : HelpView.cpp
 
 .PRECIOUS: $(CX_LIBS)
 .SUFFIXES: .cpp .C .cc .cxx .o
