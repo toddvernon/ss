@@ -518,6 +518,10 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                 // Ctrl-Y: paste
                 CMD_Paste("");
             }
+            else if (tag == "N" || tag == "<FS>") {
+                // Ctrl-N or Ctrl-4: cycle number formats
+                cycleNumberFormat();
+            }
         }
         break;
 
@@ -3119,6 +3123,122 @@ SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
         snprintf(buf, sizeof(buf), "(%d cells right-aligned)", cellCount);
         setMessage(buf);
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::cycleNumberFormat
+//
+// Cycle through number formats on the current selection (or current cell).
+// Cycle: plain → $,.2 → $,.0 → ,.2 → plain
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::cycleNumberFormat(void)
+{
+    CxSheetCellCoordinate start, end;
+
+    if (_rangeSelectActive) {
+        start = _rangeAnchor;
+        end = _rangeCurrent;
+    } else {
+        start = sheetModel->getCurrentPosition();
+        end = start;
+    }
+
+    // Normalize range
+    int minRow = start.getRow();
+    int maxRow = end.getRow();
+    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
+
+    int minCol = start.getCol();
+    int maxCol = end.getCol();
+    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+
+    // Determine current state from first cell to decide next state
+    // States: 0=plain, 1=$,.2, 2=$,.0, 3=,.2
+    int currentState = 0;
+    CxSheetCellCoordinate firstCoord;
+    firstCoord.setRow(minRow);
+    firstCoord.setCol(minCol);
+    CxSheetCell *firstCell = sheetModel->getCellPtr(firstCoord);
+
+    if (firstCell != NULL) {
+        int hasCurrency = firstCell->getAppAttributeBool("currency", false) ? 1 : 0;
+        int hasThousands = firstCell->getAppAttributeBool("thousands", false) ? 1 : 0;
+        int decimals = firstCell->getAppAttributeInt("decimalPlaces", -1);
+
+        if (hasCurrency && hasThousands && decimals == 2) {
+            currentState = 1;  // $,.2
+        } else if (hasCurrency && hasThousands && decimals == 0) {
+            currentState = 2;  // $,.0
+        } else if (!hasCurrency && hasThousands && decimals == 2) {
+            currentState = 3;  // ,.2
+        } else if (hasCurrency || hasThousands || decimals >= 0) {
+            // Some other format - treat as state 3 so next is plain
+            currentState = 3;
+        }
+        // else currentState = 0 (plain)
+    }
+
+    // Advance to next state
+    int nextState = (currentState + 1) % 4;
+
+    // Apply next state to all cells in range
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                // Create cell if applying formatting
+                if (nextState != 0) {
+                    CxSheetCell newCell;
+                    sheetModel->setCell(coord, newCell);
+                    cell = sheetModel->getCellPtr(coord);
+                }
+            }
+
+            if (cell != NULL) {
+                switch (nextState) {
+                    case 0:  // plain
+                        cell->removeAppAttribute("currency");
+                        cell->removeAppAttribute("thousands");
+                        cell->removeAppAttribute("decimalPlaces");
+                        break;
+                    case 1:  // $,.2
+                        cell->setAppAttribute("currency", true);
+                        cell->setAppAttribute("thousands", true);
+                        cell->setAppAttribute("decimalPlaces", 2);
+                        break;
+                    case 2:  // $,.0
+                        cell->setAppAttribute("currency", true);
+                        cell->setAppAttribute("thousands", true);
+                        cell->setAppAttribute("decimalPlaces", 0);
+                        break;
+                    case 3:  // ,.2
+                        cell->removeAppAttribute("currency");
+                        cell->setAppAttribute("thousands", true);
+                        cell->setAppAttribute("decimalPlaces", 2);
+                        break;
+                }
+            }
+        }
+    }
+
+    // Clear range selection
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+
+    sheetView->updateScreen();
+    resetPrompt();
+
+    // Show format message
+    const char *formatNames[] = { "plain", "$,.2", "$,.0", ",.2" };
+    setMessage(formatNames[nextState]);
 }
 
 

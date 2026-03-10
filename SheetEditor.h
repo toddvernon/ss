@@ -173,6 +173,9 @@ class SheetEditor {
     void applySelectedColor(void);
     void exitColorPickerMode(void);
 
+    // Format cycling
+    void cycleNumberFormat(void);
+
     ProgramMode programMode;
 
     CxScreen   *screen;

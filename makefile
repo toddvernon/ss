@@ -55,7 +55,7 @@ CX_LIBS = \
 # Base library must come last - other libs depend on it
 CX_LIBS_BASE = $(LIB_CX_PLATFORM_LIB_DIR)/$(LIB_CX_BASE_NAME)
 
-ALL_LIBS = $(CX_LIBS) $(CX_LIBS_BASE) $(PLATFORM_LIBS)
+ALL_LIBS = $(CX_LIBS) $(CX_LIBS_BASE)
 
 OBJECTS = \
 	$(APP_OBJECT_DIR)/Ss.o                   \
