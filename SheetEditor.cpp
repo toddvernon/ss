@@ -47,6 +47,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _cmdInputState(CMD_INPUT_IDLE)
 , _currentCommand(NULL)
 , _quitRequested(0)
+, _quitAfterSave(0)
 , _dataEntryMode(ENTRY_NONE)
 , _inCellHuntMode(0)
 , _cellHuntRangeActive(0)
@@ -653,7 +654,27 @@ SheetEditor::dispatchControlX(void)
 
     // Ctrl-X Ctrl-S - Save
     if (secondAction.tag() == "S") {
-        CMD_Save("");
+        if (_filePath.length() > 0) {
+            // Have a filename - save directly
+            CMD_Save("");
+        } else {
+            // No filename - enter command mode with file-save, prompt for filename
+            programMode = COMMANDLINE;
+            _cmdInputState = CMD_INPUT_ARGUMENT;
+            _cmdBuffer = "file-save";
+            _argBuffer = "";
+
+            // Find the file-save command entry
+            for (int i = 0; commandTable[i].name != NULL; i++) {
+                if (CxString(commandTable[i].name) == "file-save") {
+                    _currentCommand = &commandTable[i];
+                    break;
+                }
+            }
+
+            _activeCompleter = NULL;  // freeform text entry for filename
+            updateArgumentDisplay();
+        }
         return 0;
     }
 
@@ -991,11 +1012,18 @@ SheetEditor::executeCurrentCommand(void)
         return;
     }
 
+    // Save state before handler - handler may change it to request more input
+    CommandInputState stateBefore = _cmdInputState;
+
     // Call the command handler
     (this->*(_currentCommand->handler))(_argBuffer);
 
-    // Return to edit mode (unless quit was requested)
-    if (!_quitRequested) {
+    // Return to edit mode unless:
+    // - quit was requested
+    // - handler switched TO argument mode (e.g., quit-save prompting for filename)
+    int handlerRequestedArgInput = (stateBefore != CMD_INPUT_ARGUMENT &&
+                                    _cmdInputState == CMD_INPUT_ARGUMENT);
+    if (!_quitRequested && !handlerRequestedArgInput) {
         exitCommandLineMode();
     }
 }
@@ -1027,8 +1055,8 @@ SheetEditor::updateCommandDisplay(void)
     CxString display = prefix + _cmdBuffer;
 
     // Get all matches
-    CxString matchNames[32];
-    int matchCount = _activeCompleter->findMatches(_cmdBuffer, matchNames, 32);
+    CxString matchNames[64];
+    int matchCount = _activeCompleter->findMatches(_cmdBuffer, matchNames, 64);
 
     // Don't show hints if exact match
     int isExactMatch = (matchCount == 1 && _cmdBuffer == matchNames[0]);
@@ -1466,12 +1494,20 @@ SheetEditor::screenResizeCallback(void)
 //-------------------------------------------------------------------------------------------------
 // SheetEditor::CMD_Quit
 //
-// Quit command handler.
+// Quit command handler. If no filename is set (unsaved new sheet), prompt to save first.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::CMD_Quit(CxString commandLine)
 {
     (void)commandLine;
+
+    // If we have a filename, just quit (file is saved or user knows the filename)
+    // If no filename, prompt the user to save first
+    if (_filePath.length() == 0) {
+        setMessage("Unsaved sheet - use quit-save or quit-nosave");
+        return;
+    }
+
     _quitRequested = 1;
 }
 
@@ -1479,14 +1515,36 @@ SheetEditor::CMD_Quit(CxString commandLine)
 //-------------------------------------------------------------------------------------------------
 // SheetEditor::CMD_QuitSave
 //
-// Save and quit.
+// Save and quit. If no filename is set, prompt for one first.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::CMD_QuitSave(CxString commandLine)
 {
     (void)commandLine;
-    CMD_Save("");
-    CMD_Quit("");
+
+    if (_filePath.length() > 0) {
+        // Have a filename - save and quit immediately
+        CMD_Save("");
+        CMD_Quit("");
+    } else {
+        // No filename - enter argument mode to get filename, then quit after save
+        _quitAfterSave = 1;
+        programMode = COMMANDLINE;
+        _cmdInputState = CMD_INPUT_ARGUMENT;
+        _cmdBuffer = "quit-save";
+        _argBuffer = "";
+
+        // Find the file-save command entry (we'll use its handler)
+        for (int i = 0; commandTable[i].name != NULL; i++) {
+            if (CxString(commandTable[i].name) == "file-save") {
+                _currentCommand = &commandTable[i];
+                break;
+            }
+        }
+
+        _activeCompleter = NULL;  // freeform text entry for filename
+        updateArgumentDisplay();
+    }
 }
 
 
@@ -1621,8 +1679,15 @@ SheetEditor::CMD_Save(CxString commandLine)
         sheetView->setFilePath(_filePath);
         sheetView->updateStatusLine();
         setMessage(CxString("Saved: ") + filepath);
+
+        // If quit-save was pending, quit now
+        if (_quitAfterSave) {
+            _quitAfterSave = 0;
+            CMD_Quit("");
+        }
     } else {
         setMessage(CxString("Failed to save: ") + filepath);
+        _quitAfterSave = 0;  // Clear flag on failure
     }
 }
 

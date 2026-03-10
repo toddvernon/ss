@@ -213,6 +213,7 @@ class SheetEditor {
     CxString _argBuffer;            // freeform argument text
     CommandEntry *_currentCommand;  // selected command (after completion)
     int _quitRequested;             // set by CMD_Quit to signal exit
+    int _quitAfterSave;             // set by quit-save to quit after save completes
 
     // data entry state
     DataEntryMode _dataEntryMode;
