@@ -56,6 +56,7 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _rangeSelectActive(0)
 , _clipboardRows(0)
 , _clipboardCols(0)
+, _clipboardIsCut(0)
 , _colorPickerIndex(0)
 , _colorPickerScrollOffset(0)
 , _colorPickerIsForeground(0)
@@ -2767,149 +2768,6 @@ SheetEditor::copyRangeToClipboard(CxSheetCellCoordinate start, CxSheetCellCoordi
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::adjustFormulaReferences
-//
-// Adjust cell references in a formula by the given row and column deltas.
-// Relative references are adjusted, absolute references ($) are preserved.
-//-------------------------------------------------------------------------------------------------
-CxString
-SheetEditor::adjustFormulaReferences(CxString formula, int rowDelta, int colDelta)
-{
-    // Parse the formula to get variable and range lists
-    CxExpression expr(formula);
-    expr.Parse();
-
-    CxSList<CxString> ranges = expr.GetRangeList();
-    CxSList<CxString> vars = expr.GetVariableList();
-
-    CxString result = formula;
-
-    // Process ranges first (they contain cell references we shouldn't double-process)
-    for (int i = 0; i < (int)ranges.entries(); i++) {
-        CxString rangeStr = ranges.at(i);
-
-        // Parse the range (format: "A1:B2" or "$A$1:$B$2")
-        int colonPos = -1;
-        for (int j = 0; j < (int)rangeStr.length(); j++) {
-            if (rangeStr.data()[j] == ':') {
-                colonPos = j;
-                break;
-            }
-        }
-
-        if (colonPos > 0) {
-            CxString startStr = rangeStr.subString(0, colonPos);
-            CxString endStr = rangeStr.subString(colonPos + 1, rangeStr.length() - colonPos - 1);
-
-            CxSheetCellCoordinate startCoord(startStr);
-            CxSheetCellCoordinate endCoord(endStr);
-
-            // Adjust non-absolute coordinates
-            if (!startCoord.isRowAbsolute()) {
-                int newRow = (int)startCoord.getRow() + rowDelta;
-                if (newRow < 0) newRow = 0;
-                startCoord.setRow(newRow);
-            }
-            if (!startCoord.isColAbsolute()) {
-                int newCol = (int)startCoord.getCol() + colDelta;
-                if (newCol < 0) newCol = 0;
-                startCoord.setCol(newCol);
-            }
-            if (!endCoord.isRowAbsolute()) {
-                int newRow = (int)endCoord.getRow() + rowDelta;
-                if (newRow < 0) newRow = 0;
-                endCoord.setRow(newRow);
-            }
-            if (!endCoord.isColAbsolute()) {
-                int newCol = (int)endCoord.getCol() + colDelta;
-                if (newCol < 0) newCol = 0;
-                endCoord.setCol(newCol);
-            }
-
-            // Build new range string preserving absolute markers
-            CxString newRange = startCoord.toAbsoluteAddress() + ":" + endCoord.toAbsoluteAddress();
-
-            // Replace in result (first occurrence only since ranges are unique)
-            int pos = result.index(rangeStr);
-            if (pos >= 0) {
-                CxString before = result.subString(0, pos);
-                CxString after = result.subString(pos + rangeStr.length(),
-                                                   result.length() - pos - rangeStr.length());
-                result = before + newRange + after;
-            }
-        }
-    }
-
-    // Process single cell references (skip those that are part of ranges)
-    for (int i = 0; i < (int)vars.entries(); i++) {
-        CxString varStr = vars.at(i);
-
-        // Check if this variable is part of a range (skip if so)
-        int isPartOfRange = 0;
-        for (int j = 0; j < (int)ranges.entries(); j++) {
-            CxString rangeStr = ranges.at(j);
-            if (rangeStr.index(varStr) >= 0) {
-                isPartOfRange = 1;
-                break;
-            }
-        }
-        if (isPartOfRange) {
-            continue;
-        }
-
-        CxSheetCellCoordinate coord(varStr);
-
-        // Adjust non-absolute coordinates
-        if (!coord.isRowAbsolute()) {
-            int newRow = (int)coord.getRow() + rowDelta;
-            if (newRow < 0) newRow = 0;
-            coord.setRow(newRow);
-        }
-        if (!coord.isColAbsolute()) {
-            int newCol = (int)coord.getCol() + colDelta;
-            if (newCol < 0) newCol = 0;
-            coord.setCol(newCol);
-        }
-
-        // Build new reference preserving absolute markers
-        CxString newRef = coord.toAbsoluteAddress();
-
-        // Replace in result (careful to match whole reference, not substrings)
-        // We need to find exact matches, not partial matches like "A1" in "A10"
-        int searchPos = 0;
-        while (searchPos < (int)result.length()) {
-            int pos = result.index(varStr, searchPos);
-            if (pos < 0) break;
-
-            // Check if this is a complete reference (not part of a larger identifier)
-            int isBoundedStart = (pos == 0) ||
-                                  (!((result.data()[pos-1] >= 'A' && result.data()[pos-1] <= 'Z') ||
-                                     (result.data()[pos-1] >= 'a' && result.data()[pos-1] <= 'z') ||
-                                     (result.data()[pos-1] >= '0' && result.data()[pos-1] <= '9') ||
-                                     result.data()[pos-1] == '$'));
-
-            int endPos = pos + varStr.length();
-            int isBoundedEnd = (endPos >= (int)result.length()) ||
-                               (!((result.data()[endPos] >= 'A' && result.data()[endPos] <= 'Z') ||
-                                  (result.data()[endPos] >= 'a' && result.data()[endPos] <= 'z') ||
-                                  (result.data()[endPos] >= '0' && result.data()[endPos] <= '9')));
-
-            if (isBoundedStart && isBoundedEnd) {
-                CxString before = result.subString(0, pos);
-                CxString after = result.subString(endPos, result.length() - endPos);
-                result = before + newRef + after;
-                searchPos = pos + newRef.length();
-            } else {
-                searchPos = endPos;
-            }
-        }
-    }
-
-    return result;
-}
-
-
-//-------------------------------------------------------------------------------------------------
 // SheetEditor::CMD_Copy
 //
 // Copy the current selection (or current cell if no selection) to the clipboard.
@@ -2931,6 +2789,7 @@ SheetEditor::CMD_Copy(CxString commandLine)
     }
 
     copyRangeToClipboard(start, end);
+    _clipboardIsCut = 0;
 
     int cellCount = (int)_clipboard.entries();
     if (cellCount == 1) {
@@ -2947,7 +2806,7 @@ SheetEditor::CMD_Copy(CxString commandLine)
 // SheetEditor::CMD_Cut
 //
 // Cut the current selection (or current cell if no selection) to the clipboard.
-// Copies the cells and then clears the source.
+// Copies the cells and then clears the source using setCell to notify dependency graph.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::CMD_Cut(CxString commandLine)
@@ -2967,6 +2826,7 @@ SheetEditor::CMD_Cut(CxString commandLine)
 
     // Copy first
     copyRangeToClipboard(start, end);
+    _clipboardIsCut = 1;
 
     int cellCount = (int)_clipboard.entries();
 
@@ -2974,18 +2834,15 @@ SheetEditor::CMD_Cut(CxString commandLine)
     int minRow, maxRow, minCol, maxCol;
     normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
-    // Clear source cells
+    // Clear source cells (use setCell to notify dependency graph)
     for (int row = minRow; row <= maxRow; row++) {
         for (int col = minCol; col <= maxCol; col++) {
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
 
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL) {
-                cell->clear();
-                cell->removeAppAttribute("symbolFill");
-            }
+            CxSheetCell emptyCell;
+            sheetModel->setCell(coord, emptyCell);
         }
     }
 
@@ -3006,8 +2863,9 @@ SheetEditor::CMD_Cut(CxString commandLine)
 //-------------------------------------------------------------------------------------------------
 // SheetEditor::CMD_Paste
 //
-// Paste clipboard contents at the current cursor position. Formulas have their references
-// adjusted based on the paste offset.
+// Paste clipboard contents at the current cursor position.
+// Cut: uses sheetModel->moveCells() to move cells and update all references.
+// Copy: adjusts formula references relative to paste position.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::CMD_Paste(CxString commandLine)
@@ -3019,40 +2877,60 @@ SheetEditor::CMD_Paste(CxString commandLine)
         return;
     }
 
-    // Get paste anchor (current position is top-left of paste)
     CxSheetCellCoordinate pasteAnchor = sheetModel->getCurrentPosition();
 
-    // Calculate the delta from original position to paste position
-    // All cells move by the same delta: pasteAnchor - clipboardAnchor
-    int rowDelta = pasteAnchor.getRow() - _clipboardAnchor.getRow();
-    int colDelta = pasteAnchor.getCol() - _clipboardAnchor.getCol();
+    if (_clipboardIsCut) {
+        // Build old/new coordinate lists and call model's moveCells
+        CxSList<CxSheetCellCoordinate> oldCoords;
+        CxSList<CxSheetCellCoordinate> newCoords;
 
-    // Paste each cell
-    for (int i = 0; i < (int)_clipboard.entries(); i++) {
-        ClipboardCell clipCell = _clipboard.at(i);
+        for (int i = 0; i < (int)_clipboard.entries(); i++) {
+            ClipboardCell clipCell = _clipboard.at(i);
 
-        int targetRow = pasteAnchor.getRow() + clipCell.rowOffset;
-        int targetCol = pasteAnchor.getCol() + clipCell.colOffset;
+            CxSheetCellCoordinate oldCoord;
+            oldCoord.setRow(_clipboardAnchor.getRow() + clipCell.rowOffset);
+            oldCoord.setCol(_clipboardAnchor.getCol() + clipCell.colOffset);
 
-        CxSheetCellCoordinate targetCoord;
-        targetCoord.setRow(targetRow);
-        targetCoord.setCol(targetCol);
+            CxSheetCellCoordinate newCoord;
+            newCoord.setRow(pasteAnchor.getRow() + clipCell.rowOffset);
+            newCoord.setCol(pasteAnchor.getCol() + clipCell.colOffset);
 
-        CxSheetCell newCell = clipCell.cell;
-
-        // If it's a formula, adjust references
-        if (newCell.getType() == CxSheetCell::FORMULA) {
-            CxString adjustedFormula = adjustFormulaReferences(newCell.getFormulaText(),
-                                                                rowDelta, colDelta);
-            newCell.setFormula(adjustedFormula);
+            oldCoords.append(oldCoord);
+            newCoords.append(newCoord);
         }
 
-        sheetModel->setCell(targetCoord, newCell);
+        sheetModel->moveCells(oldCoords, newCoords);
+
+    } else {
+        // Copy/paste: place cells with formula adjustment via model method
+        int rowDelta = pasteAnchor.getRow() - _clipboardAnchor.getRow();
+        int colDelta = pasteAnchor.getCol() - _clipboardAnchor.getCol();
+
+        for (int i = 0; i < (int)_clipboard.entries(); i++) {
+            ClipboardCell clipCell = _clipboard.at(i);
+
+            CxSheetCellCoordinate targetCoord;
+            targetCoord.setRow(pasteAnchor.getRow() + clipCell.rowOffset);
+            targetCoord.setCol(pasteAnchor.getCol() + clipCell.colOffset);
+
+            CxSheetCell newCell = clipCell.cell;
+
+            if (newCell.getType() == CxSheetCell::FORMULA) {
+                CxString adjusted = sheetModel->adjustFormulaForCopy(
+                    newCell.getFormulaText(), rowDelta, colDelta);
+                newCell.setFormula(adjusted);
+            }
+
+            sheetModel->setCell(targetCoord, newCell);
+        }
     }
 
     clearRangeSelection();
 
-    sheetView->updateScreen();
+    // Use standard getLastAffectedCells() contract
+    CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
+    sheetView->updateCells(affected);
+    sheetView->updateVisibleTextmapCells();
 
     int cellCount = (int)_clipboard.entries();
     if (cellCount == 1) {
@@ -3149,44 +3027,12 @@ SheetEditor::CMD_FillDown(CxString commandLine)
         return;
     }
 
-    // Source is first row (minRow)
-    // For each column in range, fill source cell down through remaining rows
-    for (int col = minCol; col <= maxCol; col++) {
-        // Get source cell
-        CxSheetCellCoordinate srcCoord;
-        srcCoord.setRow(minRow);
-        srcCoord.setCol(col);
-        CxSheetCell *srcPtr = sheetModel->getCellPtr(srcCoord);
+    sheetModel->fillDown(minRow, maxRow, minCol, maxCol);
 
-        CxSheetCell srcCell;
-        if (srcPtr != NULL) {
-            srcCell = *srcPtr;
-        }
-
-        // Fill to each row below
-        for (int row = minRow + 1; row <= maxRow; row++) {
-            int rowDelta = row - minRow;
-
-            CxSheetCellCoordinate dstCoord;
-            dstCoord.setRow(row);
-            dstCoord.setCol(col);
-
-            CxSheetCell newCell = srcCell;
-
-            // Adjust formula references (row delta only)
-            if (newCell.getType() == CxSheetCell::FORMULA) {
-                CxString adjusted = adjustFormulaReferences(
-                    newCell.getFormulaText(), rowDelta, 0);
-                newCell.setFormula(adjusted);
-            }
-
-            sheetModel->setCell(dstCoord, newCell);
-        }
-    }
-
-    // Clear selection
     clearRangeSelection();
-    sheetView->updateScreen();
+    CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
+    sheetView->updateCells(affected);
+    sheetView->updateVisibleTextmapCells();
 
     int rowsFilled = maxRow - minRow;
     char buf[64];
@@ -3223,44 +3069,12 @@ SheetEditor::CMD_FillRight(CxString commandLine)
         return;
     }
 
-    // Source is first column (minCol)
-    // For each row in range, fill source cell right through remaining columns
-    for (int row = minRow; row <= maxRow; row++) {
-        // Get source cell
-        CxSheetCellCoordinate srcCoord;
-        srcCoord.setRow(row);
-        srcCoord.setCol(minCol);
-        CxSheetCell *srcPtr = sheetModel->getCellPtr(srcCoord);
+    sheetModel->fillRight(minRow, maxRow, minCol, maxCol);
 
-        CxSheetCell srcCell;
-        if (srcPtr != NULL) {
-            srcCell = *srcPtr;
-        }
-
-        // Fill to each column to the right
-        for (int col = minCol + 1; col <= maxCol; col++) {
-            int colDelta = col - minCol;
-
-            CxSheetCellCoordinate dstCoord;
-            dstCoord.setRow(row);
-            dstCoord.setCol(col);
-
-            CxSheetCell newCell = srcCell;
-
-            // Adjust formula references (col delta only)
-            if (newCell.getType() == CxSheetCell::FORMULA) {
-                CxString adjusted = adjustFormulaReferences(
-                    newCell.getFormulaText(), 0, colDelta);
-                newCell.setFormula(adjusted);
-            }
-
-            sheetModel->setCell(dstCoord, newCell);
-        }
-    }
-
-    // Clear selection
     clearRangeSelection();
-    sheetView->updateScreen();
+    CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
+    sheetView->updateCells(affected);
+    sheetView->updateVisibleTextmapCells();
 
     int colsFilled = maxCol - minCol;
     char buf[64];

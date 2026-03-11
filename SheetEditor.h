@@ -238,6 +238,7 @@ class SheetEditor {
     CxSheetCellCoordinate _clipboardAnchor;   // top-left of original copied range
     int _clipboardRows;                       // dimensions of clipboard content
     int _clipboardCols;
+    int _clipboardIsCut;                      // 1 if clipboard from cut, 0 if from copy
 
     // color picker state
     int _colorPickerIndex;           // current selection in palette
@@ -272,7 +273,6 @@ class SheetEditor {
 
     // clipboard helpers
     void copyRangeToClipboard(CxSheetCellCoordinate start, CxSheetCellCoordinate end);
-    CxString adjustFormulaReferences(CxString formula, int rowDelta, int colDelta);
 
     // range helpers
     void normalizeRange(CxSheetCellCoordinate start, CxSheetCellCoordinate end,
