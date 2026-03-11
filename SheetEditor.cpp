@@ -188,6 +188,15 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     }
 
     //---------------------------------------------------------------------------------------------
+    // Set window title to filename (or "ss" for new sheets)
+    //---------------------------------------------------------------------------------------------
+    if (_filePath.length() > 0) {
+        CxScreen::setWindowTitle(CxString("ss: ") + _filePath);
+    } else {
+        CxScreen::setWindowTitle("ss");
+    }
+
+    //---------------------------------------------------------------------------------------------
     // Final flush to ensure complete initial draw before entering run loop
     //---------------------------------------------------------------------------------------------
     fflush(stdout);
@@ -1613,6 +1622,7 @@ SheetEditor::CMD_Load(CxString commandLine)
             }
         }
 
+        CxScreen::setWindowTitle(CxString("ss: ") + filepath);
         setMessage(CxString("Loaded: ") + filepath);
         sheetView->updateScreen();
     } else {
@@ -1684,6 +1694,7 @@ SheetEditor::CMD_Save(CxString commandLine)
         _filePath = filepath;
         sheetView->setFilePath(_filePath);
         sheetView->updateStatusLine();
+        CxScreen::setWindowTitle(CxString("ss: ") + filepath);
         setMessage(CxString("Saved: ") + filepath);
 
         // If quit-save was pending, quit now

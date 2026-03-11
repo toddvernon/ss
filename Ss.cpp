@@ -46,7 +46,8 @@ int main(int argc, char **argv)
     // get the current cursor position
     CxScreen::getCursorPosition(&row, &col);
 
-    // open alternate screen to preserve the existing screen
+    // save current window title and open alternate screen
+    CxScreen::saveWindowTitle();
     CxScreen::openAlternateScreen();
     CxScreen::clearScreen();
 
@@ -58,8 +59,9 @@ int main(int argc, char **argv)
     fflush(stdout);
     CxScreen::clearScreen();
 
-    // switch back to the main screen
+    // switch back to the main screen and restore original window title
     CxScreen::closeAlternateScreen();
+    CxScreen::restoreWindowTitle();
 
     // place the cursor where it was when started
     CxScreen::placeCursor(row, col);
