@@ -3427,12 +3427,12 @@ SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
 // SheetEditor::cycleNumberFormat
 //
 // Cycle through number formats on the current selection (or current cell).
-// Cycle: plain → $,.2 → $,.0 → ,.2 → plain
+// Cycle: plain → $,.2 → $,.0 → ,.2 → ,.0 → plain
 // If range has mixed formats, first press syncs to first cell's format.
 //-------------------------------------------------------------------------------------------------
 
 // Helper to get number format state from a cell
-// Returns: 0=plain, 1=$,.2, 2=$,.0, 3=,.2
+// Returns: 0=plain, 1=$,.2, 2=$,.0, 3=,.2, 4=,.0
 static int getNumberFormatState(CxSheetCell *cell)
 {
     if (cell == NULL) return 0;
@@ -3447,8 +3447,10 @@ static int getNumberFormatState(CxSheetCell *cell)
         return 2;  // $,.0
     } else if (!hasCurrency && hasThousands && decimals == 2) {
         return 3;  // ,.2
+    } else if (!hasCurrency && hasThousands && decimals == 0) {
+        return 4;  // ,.0
     } else if (hasCurrency || hasThousands || decimals >= 0) {
-        return 3;  // Some other format - treat as state 3
+        return 4;  // Some other format - treat as state 4
     }
     return 0;  // plain
 }
@@ -3478,6 +3480,11 @@ static void applyNumberFormatState(CxSheetCell *cell, int state)
             cell->removeAppAttribute("currency");
             cell->setAppAttribute("thousands", true);
             cell->setAppAttribute("decimalPlaces", 2);
+            break;
+        case 4:  // ,.0
+            cell->removeAppAttribute("currency");
+            cell->setAppAttribute("thousands", true);
+            cell->setAppAttribute("decimalPlaces", 0);
             break;
     }
 }
@@ -3521,7 +3528,7 @@ SheetEditor::cycleNumberFormat(void)
     }
 
     // If mixed, sync to first cell's format; otherwise advance to next
-    int targetState = allSame ? ((firstState + 1) % 4) : firstState;
+    int targetState = allSame ? ((firstState + 1) % 5) : firstState;
 
     // Apply target state to all cells in range
     for (int row = minRow; row <= maxRow; row++) {
