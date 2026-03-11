@@ -185,6 +185,11 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     } else {
         setMessage("New sheet");
     }
+
+    //---------------------------------------------------------------------------------------------
+    // Final flush to ensure complete initial draw before entering run loop
+    //---------------------------------------------------------------------------------------------
+    fflush(stdout);
 }
 
 
@@ -2591,6 +2596,131 @@ SheetEditor::focusHelpView(CxKeyAction keyAction)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::normalizeRange
+//
+// Normalize a range defined by start and end coordinates. Returns min/max row and col
+// values ensuring minRow <= maxRow and minCol <= maxCol.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::normalizeRange(CxSheetCellCoordinate start, CxSheetCellCoordinate end,
+                            int *minRow, int *maxRow, int *minCol, int *maxCol)
+{
+    *minRow = start.getRow();
+    *maxRow = end.getRow();
+    if (*minRow > *maxRow) {
+        int tmp = *minRow;
+        *minRow = *maxRow;
+        *maxRow = tmp;
+    }
+
+    *minCol = start.getCol();
+    *maxCol = end.getCol();
+    if (*minCol > *maxCol) {
+        int tmp = *minCol;
+        *minCol = *maxCol;
+        *maxCol = tmp;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::getColumnRange
+//
+// Get the column range based on current selection state. If range selection is active,
+// returns the normalized column range. Otherwise returns current cursor column as both
+// start and end.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::getColumnRange(int *startCol, int *endCol)
+{
+    if (_rangeSelectActive) {
+        *startCol = _rangeAnchor.getCol();
+        *endCol = _rangeCurrent.getCol();
+        if (*startCol > *endCol) {
+            int tmp = *startCol;
+            *startCol = *endCol;
+            *endCol = tmp;
+        }
+    } else {
+        *startCol = sheetModel->getCurrentPosition().getCol();
+        *endCol = *startCol;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::clearRangeSelection
+//
+// Clear the active range selection and update the display.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::clearRangeSelection(void)
+{
+    if (_rangeSelectActive) {
+        _rangeSelectActive = 0;
+        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::setCellAttribute
+//
+// Set a string attribute on a cell, creating the cell if it doesn't exist.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::setCellAttribute(CxSheetCellCoordinate coord, const char *attrName, const char *value)
+{
+    CxSheetCell *cell = sheetModel->getCellPtr(coord);
+    if (cell == NULL) {
+        CxSheetCell newCell;
+        newCell.setAppAttribute(attrName, value);
+        sheetModel->setCell(coord, newCell);
+    } else {
+        cell->setAppAttribute(attrName, value);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::setCellAttributeBool
+//
+// Set a boolean attribute on a cell, creating the cell if it doesn't exist.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::setCellAttributeBool(CxSheetCellCoordinate coord, const char *attrName, int value)
+{
+    CxSheetCell *cell = sheetModel->getCellPtr(coord);
+    if (cell == NULL) {
+        CxSheetCell newCell;
+        newCell.setAppAttribute(attrName, value ? true : false);
+        sheetModel->setCell(coord, newCell);
+    } else {
+        cell->setAppAttribute(attrName, value ? true : false);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::setCellAttributeInt
+//
+// Set an integer attribute on a cell, creating the cell if it doesn't exist.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::setCellAttributeInt(CxSheetCellCoordinate coord, const char *attrName, int value)
+{
+    CxSheetCell *cell = sheetModel->getCellPtr(coord);
+    if (cell == NULL) {
+        CxSheetCell newCell;
+        newCell.setAppAttribute(attrName, value);
+        sheetModel->setCell(coord, newCell);
+    } else {
+        cell->setAppAttribute(attrName, value);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::copyRangeToClipboard
 //
 // Copy cells from start to end coordinates into the clipboard. Stores each cell with its
@@ -2603,21 +2733,8 @@ SheetEditor::copyRangeToClipboard(CxSheetCellCoordinate start, CxSheetCellCoordi
     _clipboard.clear();
 
     // Normalize range (ensure start is top-left, end is bottom-right)
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) {
-        int tmp = minRow;
-        minRow = maxRow;
-        maxRow = tmp;
-    }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) {
-        int tmp = minCol;
-        minCol = maxCol;
-        maxCol = tmp;
-    }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     // Store dimensions and anchor
     _clipboardRows = maxRow - minRow + 1;
@@ -2854,21 +2971,8 @@ SheetEditor::CMD_Cut(CxString commandLine)
     int cellCount = (int)_clipboard.entries();
 
     // Normalize range for clearing
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) {
-        int tmp = minRow;
-        minRow = maxRow;
-        maxRow = tmp;
-    }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) {
-        int tmp = minCol;
-        minCol = maxCol;
-        maxCol = tmp;
-    }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     // Clear source cells
     for (int row = minRow; row <= maxRow; row++) {
@@ -2885,11 +2989,7 @@ SheetEditor::CMD_Cut(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -2950,11 +3050,7 @@ SheetEditor::CMD_Paste(CxString commandLine)
         sheetModel->setCell(targetCoord, newCell);
     }
 
-    // Clear range selection if active
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -2991,21 +3087,8 @@ SheetEditor::CMD_Clear(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) {
-        int tmp = minRow;
-        minRow = maxRow;
-        maxRow = tmp;
-    }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) {
-        int tmp = minCol;
-        minCol = maxCol;
-        maxCol = tmp;
-    }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
 
@@ -3025,11 +3108,7 @@ SheetEditor::CMD_Clear(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -3061,13 +3140,8 @@ SheetEditor::CMD_FillDown(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = _rangeAnchor.getRow();
-    int maxRow = _rangeCurrent.getRow();
-    if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
-
-    int minCol = _rangeAnchor.getCol();
-    int maxCol = _rangeCurrent.getCol();
-    if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
 
     // Need at least 2 rows
     if (maxRow - minRow < 1) {
@@ -3111,8 +3185,7 @@ SheetEditor::CMD_FillDown(CxString commandLine)
     }
 
     // Clear selection
-    _rangeSelectActive = 0;
-    sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    clearRangeSelection();
     sheetView->updateScreen();
 
     int rowsFilled = maxRow - minRow;
@@ -3141,13 +3214,8 @@ SheetEditor::CMD_FillRight(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = _rangeAnchor.getRow();
-    int maxRow = _rangeCurrent.getRow();
-    if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
-
-    int minCol = _rangeAnchor.getCol();
-    int maxCol = _rangeCurrent.getCol();
-    if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
 
     // Need at least 2 columns
     if (maxCol - minCol < 1) {
@@ -3191,8 +3259,7 @@ SheetEditor::CMD_FillRight(CxString commandLine)
     }
 
     // Clear selection
-    _rangeSelectActive = 0;
-    sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+    clearRangeSelection();
     sheetView->updateScreen();
 
     int colsFilled = maxCol - minCol;
@@ -3224,21 +3291,8 @@ SheetEditor::CMD_FormatCellAlignLeft(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) {
-        int tmp = minRow;
-        minRow = maxRow;
-        maxRow = tmp;
-    }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) {
-        int tmp = minCol;
-        minCol = maxCol;
-        maxCol = tmp;
-    }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
 
@@ -3248,25 +3302,12 @@ SheetEditor::CMD_FormatCellAlignLeft(CxString commandLine)
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
-
-            // Get or create cell
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("align", "left");
-                sheetModel->setCell(coord, newCell);
-            } else {
-                cell->setAppAttribute("align", "left");
-            }
+            setCellAttribute(coord, "align", "left");
             cellCount++;
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -3301,21 +3342,8 @@ SheetEditor::CMD_FormatCellAlignCenter(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) {
-        int tmp = minRow;
-        minRow = maxRow;
-        maxRow = tmp;
-    }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) {
-        int tmp = minCol;
-        minCol = maxCol;
-        maxCol = tmp;
-    }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
 
@@ -3325,25 +3353,12 @@ SheetEditor::CMD_FormatCellAlignCenter(CxString commandLine)
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
-
-            // Get or create cell
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("align", "center");
-                sheetModel->setCell(coord, newCell);
-            } else {
-                cell->setAppAttribute("align", "center");
-            }
+            setCellAttribute(coord, "align", "center");
             cellCount++;
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -3378,21 +3393,8 @@ SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) {
-        int tmp = minRow;
-        minRow = maxRow;
-        maxRow = tmp;
-    }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) {
-        int tmp = minCol;
-        minCol = maxCol;
-        maxCol = tmp;
-    }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
 
@@ -3402,25 +3404,12 @@ SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
-
-            // Get or create cell
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("align", "right");
-                sheetModel->setCell(coord, newCell);
-            } else {
-                cell->setAppAttribute("align", "right");
-            }
+            setCellAttribute(coord, "align", "right");
             cellCount++;
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -3507,13 +3496,8 @@ SheetEditor::cycleNumberFormat(void)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     // Get first cell's state
     CxSheetCellCoordinate firstCoord;
@@ -3599,13 +3583,8 @@ SheetEditor::cycleAlignment(void)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     // Get first cell's state
     CxSheetCellCoordinate firstCoord;
@@ -3687,13 +3666,8 @@ SheetEditor::togglePercentFormat(void)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     // Get first cell's state
     CxSheetCellCoordinate firstCoord;
@@ -3786,13 +3760,8 @@ SheetEditor::cycleDateFormat(void)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     // Date format cycle
     const char *formats[] = { "yyyy-mm-dd", "yyyy/mm/dd", "mm/dd/yyyy", "mm-dd-yyyy" };
@@ -3884,13 +3853,8 @@ SheetEditor::CMD_FormatCellNumberCurrency(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
     int newState = -1;  // -1 means not determined yet
@@ -3923,11 +3887,7 @@ SheetEditor::CMD_FormatCellNumberCurrency(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -3976,13 +3936,8 @@ SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
 
@@ -3992,24 +3947,12 @@ SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
-
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("decimalPlaces", places);
-                sheetModel->setCell(coord, newCell);
-            } else {
-                cell->setAppAttribute("decimalPlaces", places);
-            }
+            setCellAttributeInt(coord, "decimalPlaces", places);
             cellCount++;
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -4046,13 +3989,8 @@ SheetEditor::CMD_FormatCellNumberPercent(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
     int newState = -1;
@@ -4079,11 +4017,7 @@ SheetEditor::CMD_FormatCellNumberPercent(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -4121,13 +4055,8 @@ SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
     int newState = -1;
@@ -4154,11 +4083,7 @@ SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -4197,13 +4122,8 @@ SheetEditor::CMD_FormatCellTextWide(CxString commandLine)
     }
 
     // Normalize range
-    int minRow = start.getRow();
-    int maxRow = end.getRow();
-    if (minRow > maxRow) { int tmp = minRow; minRow = maxRow; maxRow = tmp; }
-
-    int minCol = start.getCol();
-    int maxCol = end.getCol();
-    if (minCol > maxCol) { int tmp = minCol; minCol = maxCol; maxCol = tmp; }
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
     int newState = -1;
@@ -4230,11 +4150,7 @@ SheetEditor::CMD_FormatCellTextWide(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -4356,19 +4272,7 @@ SheetEditor::CMD_FormatColAlignLeft(CxString commandLine)
     (void)commandLine;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     for (int col = startCol; col <= endCol; col++) {
         sheetView->setColAlign(col, 1);  // 1 = left
@@ -4386,11 +4290,7 @@ SheetEditor::CMD_FormatColAlignLeft(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
     setMessage("Column align: left");
@@ -4408,19 +4308,7 @@ SheetEditor::CMD_FormatColAlignCenter(CxString commandLine)
     (void)commandLine;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     for (int col = startCol; col <= endCol; col++) {
         sheetView->setColAlign(col, 2);  // 2 = center
@@ -4438,11 +4326,7 @@ SheetEditor::CMD_FormatColAlignCenter(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
     setMessage("Column align: center");
@@ -4460,19 +4344,7 @@ SheetEditor::CMD_FormatColAlignRight(CxString commandLine)
     (void)commandLine;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     for (int col = startCol; col <= endCol; col++) {
         sheetView->setColAlign(col, 3);  // 3 = right
@@ -4490,11 +4362,7 @@ SheetEditor::CMD_FormatColAlignRight(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
     setMessage("Column align: right");
@@ -4512,19 +4380,7 @@ SheetEditor::CMD_FormatColNumberCurrency(CxString commandLine)
     (void)commandLine;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     // Toggle based on first column's current state
     int currentVal = sheetView->getColCurrency(startCol);
@@ -4546,11 +4402,7 @@ SheetEditor::CMD_FormatColNumberCurrency(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
     setMessage(newVal == 1 ? "Column currency: on" : "Column currency: off");
@@ -4570,19 +4422,7 @@ SheetEditor::CMD_FormatColNumberDecimal(CxString commandLine)
     if (places > 10) places = 10;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     for (int col = startCol; col <= endCol; col++) {
         sheetView->setColDecimalPlaces(col, places);
@@ -4600,11 +4440,7 @@ SheetEditor::CMD_FormatColNumberDecimal(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
 
@@ -4625,19 +4461,7 @@ SheetEditor::CMD_FormatColNumberPercent(CxString commandLine)
     (void)commandLine;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     // Toggle based on first column's current state
     int currentVal = sheetView->getColPercent(startCol);
@@ -4659,11 +4483,7 @@ SheetEditor::CMD_FormatColNumberPercent(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
     setMessage(newVal == 1 ? "Column percent: on" : "Column percent: off");
@@ -4681,19 +4501,7 @@ SheetEditor::CMD_FormatColNumberThousands(CxString commandLine)
     (void)commandLine;
 
     int startCol, endCol;
-
-    if (_rangeSelectActive) {
-        startCol = _rangeAnchor.getCol();
-        endCol = _rangeCurrent.getCol();
-        if (startCol > endCol) {
-            int tmp = startCol;
-            startCol = endCol;
-            endCol = tmp;
-        }
-    } else {
-        startCol = sheetModel->getCurrentPosition().getCol();
-        endCol = startCol;
-    }
+    getColumnRange(&startCol, &endCol);
 
     // Toggle based on first column's current state
     int currentVal = sheetView->getColThousands(startCol);
@@ -4715,11 +4523,7 @@ SheetEditor::CMD_FormatColNumberThousands(CxString commandLine)
         }
     }
 
-    // Clear range selection
-    if (_rangeSelectActive) {
-        _rangeSelectActive = 0;
-        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-    }
+    clearRangeSelection();
 
     sheetView->updateScreen();
     setMessage(newVal == 1 ? "Column thousands: on" : "Column thousands: off");
@@ -4987,19 +4791,7 @@ SheetEditor::applySelectedColor(void)
     if (_colorPickerIsColumn) {
         // Apply to column default(s)
         int startCol, endCol;
-
-        if (_rangeSelectActive) {
-            startCol = _rangeAnchor.getCol();
-            endCol = _rangeCurrent.getCol();
-            if (startCol > endCol) {
-                int tmp = startCol;
-                startCol = endCol;
-                endCol = tmp;
-            }
-        } else {
-            startCol = sheetModel->getCurrentPosition().getCol();
-            endCol = startCol;
-        }
+        getColumnRange(&startCol, &endCol);
 
         for (int col = startCol; col <= endCol; col++) {
             if (_colorPickerIsForeground) {
@@ -5009,32 +4801,25 @@ SheetEditor::applySelectedColor(void)
             }
         }
 
-        // Clear range selection
-        if (_rangeSelectActive) {
-            _rangeSelectActive = 0;
-            sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-        }
+        clearRangeSelection();
 
         setMessage(isNone ? "Column color cleared" : "Column color set");
     } else {
         // Apply to cell(s)
-        int startRow, endRow, startCol, endCol;
-
+        CxSheetCellCoordinate start, end;
         if (_rangeSelectActive) {
-            startRow = _rangeAnchor.getRow();
-            endRow = _rangeCurrent.getRow();
-            startCol = _rangeAnchor.getCol();
-            endCol = _rangeCurrent.getCol();
-            if (startRow > endRow) { int t = startRow; startRow = endRow; endRow = t; }
-            if (startCol > endCol) { int t = startCol; startCol = endCol; endCol = t; }
+            start = _rangeAnchor;
+            end = _rangeCurrent;
         } else {
-            CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
-            startRow = endRow = pos.getRow();
-            startCol = endCol = pos.getCol();
+            start = sheetModel->getCurrentPosition();
+            end = start;
         }
 
-        for (int row = startRow; row <= endRow; row++) {
-            for (int col = startCol; col <= endCol; col++) {
+        int minRow, maxRow, minCol, maxCol;
+        normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
+
+        for (int row = minRow; row <= maxRow; row++) {
+            for (int col = minCol; col <= maxCol; col++) {
                 CxSheetCellCoordinate coord(row, col);
                 CxSheetCell *cell = sheetModel->getCellPtr(coord);
 
@@ -5055,11 +4840,7 @@ SheetEditor::applySelectedColor(void)
             }
         }
 
-        // Clear range selection
-        if (_rangeSelectActive) {
-            _rangeSelectActive = 0;
-            sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
-        }
+        clearRangeSelection();
 
         setMessage(isNone ? "Cell color cleared" : "Cell color set");
     }

@@ -274,6 +274,17 @@ class SheetEditor {
     void copyRangeToClipboard(CxSheetCellCoordinate start, CxSheetCellCoordinate end);
     CxString adjustFormulaReferences(CxString formula, int rowDelta, int colDelta);
 
+    // range helpers
+    void normalizeRange(CxSheetCellCoordinate start, CxSheetCellCoordinate end,
+                        int *minRow, int *maxRow, int *minCol, int *maxCol);
+    void getColumnRange(int *startCol, int *endCol);
+    void clearRangeSelection(void);
+
+    // cell attribute helpers
+    void setCellAttribute(CxSheetCellCoordinate coord, const char *attrName, const char *value);
+    void setCellAttributeBool(CxSheetCellCoordinate coord, const char *attrName, int value);
+    void setCellAttributeInt(CxSheetCellCoordinate coord, const char *attrName, int value);
+
     // resize callback - coordinates all redrawing
     void screenResizeCallback(void);
 };
