@@ -1516,10 +1516,9 @@ SheetEditor::CMD_Quit(CxString commandLine)
 {
     (void)commandLine;
 
-    // If we have a filename, just quit (file is saved or user knows the filename)
-    // If no filename, prompt the user to save first
-    if (_filePath.length() == 0) {
-        setMessage("Unsaved sheet - use quit-save or quit-nosave");
+    // Block quit if there are unsaved changes or no filename
+    if (_filePath.length() == 0 || sheetModel->isTouched()) {
+        setMessage("Unsaved changes - use quit-save or quit-nosave");
         return;
     }
 
@@ -1572,7 +1571,7 @@ void
 SheetEditor::CMD_QuitWithoutSave(CxString commandLine)
 {
     (void)commandLine;
-    CMD_Quit("");
+    _quitRequested = 1;
 }
 
 

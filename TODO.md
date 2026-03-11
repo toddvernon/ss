@@ -327,4 +327,4 @@ $1,234.56       1234.56   currency=true, thousands=true
 
 1. **Freeze Panes (Phase 5)** - lock rows/columns while scrolling
 2. **Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations
-3. **Dirty Tracking** - track unsaved changes to block exit without save prompt
+3. ~~**Dirty Tracking** - track unsaved changes to block exit without save prompt~~ ✓ Complete
