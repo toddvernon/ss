@@ -159,6 +159,13 @@ class SheetEditor {
     void CMD_DeleteRow(CxString commandLine);
     void CMD_DeleteColumn(CxString commandLine);
 
+    // Hide/show commands
+    void CMD_HideRow(CxString commandLine);
+    void CMD_HideColumn(CxString commandLine);
+    void CMD_ShowRow(CxString commandLine);
+    void CMD_ShowColumn(CxString commandLine);
+    void CMD_ShowAll(CxString commandLine);
+
     // Column format commands
     void CMD_FormatColAlignLeft(CxString commandLine);
     void CMD_FormatColAlignCenter(CxString commandLine);

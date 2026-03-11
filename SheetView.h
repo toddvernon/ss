@@ -147,6 +147,21 @@ class SheetView {
     void shiftColumnFormats(int col, int direction);
     // shift column format defaults for insert (+1) or delete (-1) column operations
 
+    // Hidden row/column support
+    int isColumnHidden(int col);
+    void setColumnHidden(int col, int hidden);
+    int isRowHidden(int row);
+    void setRowHidden(int row, int hidden);
+    void showAllRows(void);
+    void showAllColumns(void);
+    int nextVisibleRow(int row, int direction);
+    // find the next visible row in the given direction (+1 or -1), returns row if visible
+    int nextVisibleCol(int col, int direction);
+    // find the next visible column in the given direction (+1 or -1), returns col if visible
+
+    void shiftHiddenRows(int row, int direction);
+    // shift hidden row indices for insert (+1) or delete (-1) row operations
+
     void updateVisibleTextmapCells(void);
     // redraw visible cells that have textmap rules (display-layer dependencies)
 
@@ -210,6 +225,12 @@ class SheetView {
     int _colThousands[MAX_COLUMNS];      // 0=unset, 1=on, 2=off
     CxString _colFgColor[MAX_COLUMNS];   // "" = unset (terminal default), else color string
     CxString _colBgColor[MAX_COLUMNS];   // "" = unset (terminal default), else color string
+    int _colHidden[MAX_COLUMNS];         // 0 = visible, 1 = hidden
+
+    // Hidden rows (sparse - stored as sorted list since rows are unbounded)
+    static const int MAX_HIDDEN_ROWS = 1000;
+    int _hiddenRows[MAX_HIDDEN_ROWS];    // sorted list of hidden row indices
+    int _hiddenRowCount;                 // number of entries in _hiddenRows
 
     int _scrollRowOffset;   // first visible data row (0-based)
     int _scrollColOffset;   // first visible data column (0-based)
@@ -280,6 +301,12 @@ class SheetView {
 
     int isCellTextType(CxSheetCell *cell);
     // check if cell content is text (TEXT type or textmap) — only text overflows
+
+    int dataRowToScreenRow(int dataRow);
+    // convert data row to screen row, accounting for hidden rows
+
+    int isDataRowVisible(int dataRow);
+    // check if a data row is within the visible screen area (not just not-hidden)
 };
 
 

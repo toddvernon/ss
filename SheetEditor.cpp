@@ -342,12 +342,36 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
 
             if (tag == "<arrow-up>") {
                 sheetModel->cursorUpRequest();
+                // Skip hidden rows
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isRowHidden(pos.getRow())) {
+                    int visRow = sheetView->nextVisibleRow(pos.getRow(), -1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(visRow, pos.getCol()));
+                }
             } else if (tag == "<arrow-down>") {
                 sheetModel->cursorDownRequest();
+                // Skip hidden rows
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isRowHidden(pos.getRow())) {
+                    int visRow = sheetView->nextVisibleRow(pos.getRow(), 1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(visRow, pos.getCol()));
+                }
             } else if (tag == "<arrow-left>") {
                 sheetModel->cursorLeftRequest();
+                // Skip hidden columns
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isColumnHidden(pos.getCol())) {
+                    int visCol = sheetView->nextVisibleCol(pos.getCol(), -1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(pos.getRow(), visCol));
+                }
             } else if (tag == "<arrow-right>") {
                 sheetModel->cursorRightRequest();
+                // Skip hidden columns
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isColumnHidden(pos.getCol())) {
+                    int visCol = sheetView->nextVisibleCol(pos.getCol(), 1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(pos.getRow(), visCol));
+                }
             }
 
             // Get new position and update display (handles scrolling if needed)
@@ -458,12 +482,32 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
             // Move cursor in the direction indicated
             if (tag == "<shift-arrow-up>") {
                 sheetModel->cursorUpRequest();
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isRowHidden(pos.getRow())) {
+                    int visRow = sheetView->nextVisibleRow(pos.getRow(), -1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(visRow, pos.getCol()));
+                }
             } else if (tag == "<shift-arrow-down>") {
                 sheetModel->cursorDownRequest();
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isRowHidden(pos.getRow())) {
+                    int visRow = sheetView->nextVisibleRow(pos.getRow(), 1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(visRow, pos.getCol()));
+                }
             } else if (tag == "<shift-arrow-left>") {
                 sheetModel->cursorLeftRequest();
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isColumnHidden(pos.getCol())) {
+                    int visCol = sheetView->nextVisibleCol(pos.getCol(), -1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(pos.getRow(), visCol));
+                }
             } else if (tag == "<shift-arrow-right>") {
                 sheetModel->cursorRightRequest();
+                CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+                if (sheetView->isColumnHidden(pos.getCol())) {
+                    int visCol = sheetView->nextVisibleCol(pos.getCol(), 1);
+                    sheetModel->jumpToCell(CxSheetCellCoordinate(pos.getRow(), visCol));
+                }
             }
 
             // Update the selection current position
@@ -2267,6 +2311,15 @@ SheetEditor::commitDataEntry(void)
     // Move cursor down to next row (standard spreadsheet behavior)
     sheetModel->cursorDownRequest();
 
+    // Skip hidden rows
+    {
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        if (sheetView->isRowHidden(pos.getRow())) {
+            int visRow = sheetView->nextVisibleRow(pos.getRow(), 1);
+            sheetModel->jumpToCell(CxSheetCellCoordinate(visRow, pos.getCol()));
+        }
+    }
+
     // Optimized refresh - redraw affected cells plus the new cursor position
     CxSList<CxSheetCellCoordinate> affected = sheetModel->getLastAffectedCells();
     affected.append(sheetModel->getCurrentPosition());
@@ -4010,6 +4063,7 @@ SheetEditor::CMD_InsertRow(CxString commandLine)
 
     int row = sheetModel->getCurrentPosition().getRow();
     sheetModel->insertRow(row);
+    sheetView->shiftHiddenRows(row, 1);
 
     // Try optimized terminal insert, fall back to full redraw
     if (!sheetView->terminalInsertRow(row)) {
@@ -4057,6 +4111,7 @@ SheetEditor::CMD_DeleteRow(CxString commandLine)
 
     int row = sheetModel->getCurrentPosition().getRow();
     sheetModel->deleteRow(row);
+    sheetView->shiftHiddenRows(row, -1);
 
     // Try optimized terminal delete, fall back to full redraw
     if (!sheetView->terminalDeleteRow(row)) {
@@ -4690,4 +4745,188 @@ SheetEditor::exitColorPickerMode(void)
 {
     _cmdInputState = CMD_INPUT_IDLE;
     exitCommandLineMode();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_HideRow
+//
+// Hide current row, or all rows in the selection range.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_HideRow(CxString commandLine)
+{
+    (void)commandLine;
+
+    if (_rangeSelectActive) {
+        int minRow, maxRow, minCol, maxCol;
+        normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+
+        for (int row = minRow; row <= maxRow; row++) {
+            sheetView->setRowHidden(row, 1);
+        }
+
+        // Clear range selection
+        clearRangeSelection();
+
+        // Move cursor to next visible row if it's now hidden
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        if (sheetView->isRowHidden(pos.getRow())) {
+            int newRow = sheetView->nextVisibleRow(pos.getRow(), 1);
+            sheetModel->jumpToCell(CxSheetCellCoordinate(newRow, pos.getCol()));
+        }
+    } else {
+        int row = sheetModel->getCurrentPosition().getRow();
+        int col = sheetModel->getCurrentPosition().getCol();
+        sheetView->setRowHidden(row, 1);
+
+        // Move cursor to next visible row
+        int newRow = sheetView->nextVisibleRow(row, 1);
+        sheetModel->jumpToCell(CxSheetCellCoordinate(newRow, col));
+    }
+
+    sheetView->updateScreen();
+    setMessage("Row hidden");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_HideColumn
+//
+// Hide current column, or all columns in the selection range.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_HideColumn(CxString commandLine)
+{
+    (void)commandLine;
+
+    if (_rangeSelectActive) {
+        int minRow, maxRow, minCol, maxCol;
+        normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+
+        for (int col = minCol; col <= maxCol; col++) {
+            sheetView->setColumnHidden(col, 1);
+        }
+
+        // Clear range selection
+        clearRangeSelection();
+
+        // Move cursor to next visible column if it's now hidden
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        if (sheetView->isColumnHidden(pos.getCol())) {
+            int newCol = sheetView->nextVisibleCol(pos.getCol(), 1);
+            sheetModel->jumpToCell(CxSheetCellCoordinate(pos.getRow(), newCol));
+        }
+    } else {
+        int row = sheetModel->getCurrentPosition().getRow();
+        int col = sheetModel->getCurrentPosition().getCol();
+        sheetView->setColumnHidden(col, 1);
+
+        // Move cursor to next visible column
+        int newCol = sheetView->nextVisibleCol(col, 1);
+        sheetModel->jumpToCell(CxSheetCellCoordinate(row, newCol));
+    }
+
+    sheetView->updateScreen();
+    setMessage("Column hidden");
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_ShowRow
+//
+// Unhide hidden rows within the selection range. Requires range selection.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_ShowRow(CxString commandLine)
+{
+    (void)commandLine;
+
+    if (!_rangeSelectActive) {
+        setMessage("Select a range spanning the hidden rows first");
+        return;
+    }
+
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+
+    int unhidden = 0;
+    for (int row = minRow; row <= maxRow; row++) {
+        if (sheetView->isRowHidden(row)) {
+            sheetView->setRowHidden(row, 0);
+            unhidden++;
+        }
+    }
+
+    clearRangeSelection();
+    sheetView->updateScreen();
+
+    if (unhidden > 0) {
+        CxString msg;
+        msg.printf("%d row%s shown", unhidden, unhidden == 1 ? "" : "s");
+        setMessage(msg);
+    } else {
+        setMessage("No hidden rows in selection");
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_ShowColumn
+//
+// Unhide hidden columns within the selection range. Requires range selection.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_ShowColumn(CxString commandLine)
+{
+    (void)commandLine;
+
+    if (!_rangeSelectActive) {
+        setMessage("Select a range spanning the hidden columns first");
+        return;
+    }
+
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+
+    int unhidden = 0;
+    for (int col = minCol; col <= maxCol; col++) {
+        if (sheetView->isColumnHidden(col)) {
+            sheetView->setColumnHidden(col, 0);
+            unhidden++;
+        }
+    }
+
+    clearRangeSelection();
+    sheetView->updateScreen();
+
+    if (unhidden > 0) {
+        CxString msg;
+        msg.printf("%d column%s shown", unhidden, unhidden == 1 ? "" : "s");
+        setMessage(msg);
+    } else {
+        setMessage("No hidden columns in selection");
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_ShowAll
+//
+// Unhide all hidden rows and columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_ShowAll(CxString commandLine)
+{
+    (void)commandLine;
+
+    sheetView->showAllRows();
+    sheetView->showAllColumns();
+
+    if (_rangeSelectActive) {
+        clearRangeSelection();
+    }
+
+    sheetView->updateScreen();
+    setMessage("All rows and columns shown");
 }

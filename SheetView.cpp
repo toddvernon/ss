@@ -16,6 +16,7 @@
 #include <string.h>
 #include <math.h>
 
+#include <cx/json/json_utf_array.h>
 #include <cx/json/json_utf_object.h>
 #include <cx/json/json_utf_member.h>
 #include <cx/json/json_utf_number.h>
@@ -63,6 +64,13 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
         _colThousands[i] = 0;       // 0 = unset
         _colFgColor[i] = "";        // "" = unset (terminal default)
         _colBgColor[i] = "";        // "" = unset (terminal default)
+        _colHidden[i] = 0;          // 0 = visible
+    }
+
+    // Initialize hidden rows list
+    _hiddenRowCount = 0;
+    for (int i = 0; i < MAX_HIDDEN_ROWS; i++) {
+        _hiddenRows[i] = -1;
     }
 }
 
@@ -175,10 +183,11 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
     for (int i = 0; i < (int)cells.entries(); i++) {
         int dataRow = cells.at(i).getRow();
 
-        // Check if row is visible
-        if (dataRow < _scrollRowOffset || dataRow >= _scrollRowOffset + visRows) {
-            continue;
-        }
+        // Skip hidden rows
+        if (isRowHidden(dataRow)) continue;
+
+        // Check if row is visible on screen
+        if (!isDataRowVisible(dataRow)) continue;
 
         // Check if already in the affected list
         int found = 0;
@@ -197,7 +206,8 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
     // Redraw each affected row using overflow-aware drawRow()
     for (int i = 0; i < numAffectedRows; i++) {
         int dataRow = affectedRows[i];
-        int screenRow = _startRow + _colHeaderHeight + (dataRow - _scrollRowOffset);
+        int screenRow = dataRowToScreenRow(dataRow);
+        if (screenRow < 0) continue;
         drawRow(screenRow, dataRow);
     }
 }
@@ -268,7 +278,7 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
     int needsRowScroll = 0;
     int needsColScroll = 0;
 
-    if (newRow < _scrollRowOffset || newRow >= _scrollRowOffset + visRows) {
+    if (!isDataRowVisible(newRow)) {
         needsRowScroll = 1;
     }
     if (newCol < _scrollColOffset || newCol >= _scrollColOffset + visCols) {
@@ -279,23 +289,28 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
         // Horizontal scroll always requires full redraw (column headers change)
         updateScreen();
     } else if (needsRowScroll) {
-        // Calculate how many rows we need to scroll
-        int rowDelta = 0;
-        if (newRow < _scrollRowOffset) {
-            // Scrolling up - new row is above visible area
-            rowDelta = newRow - _scrollRowOffset;  // negative
-        } else if (newRow >= _scrollRowOffset + visRows) {
-            // Scrolling down - new row is below visible area
-            rowDelta = newRow - (_scrollRowOffset + visRows - 1);  // positive
-        }
-
-        // Use delta scroll for small scrolls (1-3 rows), full redraw for large jumps
-        int absRowDelta = rowDelta < 0 ? -rowDelta : rowDelta;
-        if (absRowDelta <= 3 && absRowDelta > 0) {
-            deltaScroll(rowDelta, oldPos, newPos);
-        } else {
-            // Large jump - full redraw
+        // When hidden rows exist, delta scroll math gets complex - use full redraw
+        if (_hiddenRowCount > 0) {
             updateScreen();
+        } else {
+            // Calculate how many rows we need to scroll
+            int rowDelta = 0;
+            if (newRow < _scrollRowOffset) {
+                // Scrolling up - new row is above visible area
+                rowDelta = newRow - _scrollRowOffset;  // negative
+            } else if (newRow >= _scrollRowOffset + visRows) {
+                // Scrolling down - new row is below visible area
+                rowDelta = newRow - (_scrollRowOffset + visRows - 1);  // positive
+            }
+
+            // Use delta scroll for small scrolls (1-3 rows), full redraw for large jumps
+            int absRowDelta = rowDelta < 0 ? -rowDelta : rowDelta;
+            if (absRowDelta <= 3 && absRowDelta > 0) {
+                deltaScroll(rowDelta, oldPos, newPos);
+            } else {
+                // Large jump - full redraw
+                updateScreen();
+            }
         }
     } else {
         // No scrolling needed - just redraw the two affected cells
@@ -314,8 +329,8 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
 
         // Update row numbers if row changed
         if (oldPos.getRow() != newPos.getRow()) {
-            int oldScreenRow = _startRow + _colHeaderHeight + (oldPos.getRow() - _scrollRowOffset);
-            int newScreenRow = _startRow + _colHeaderHeight + (newPos.getRow() - _scrollRowOffset);
+            int oldScreenRow = dataRowToScreenRow(oldPos.getRow());
+            int newScreenRow = dataRowToScreenRow(newPos.getRow());
             drawRowNumber(oldScreenRow, oldPos.getRow());
             drawRowNumber(newScreenRow, newPos.getRow());
         }
@@ -349,6 +364,8 @@ SheetView::drawColumnHeaders(void)
     CxSheetCellCoordinate tempCoord;
 
     for (int dataCol = _scrollColOffset; screenX < screenWidth; dataCol++) {
+        if (_colHidden[dataCol]) continue;
+
         int colWidth = getColumnWidth(dataCol);
         CxString colName = tempCoord.colToLetters(dataCol);
 
@@ -393,14 +410,18 @@ SheetView::drawColumnHeaders(void)
 void
 SheetView::drawColumnHeader(int dataCol)
 {
+    // Skip hidden columns
+    if (dataCol >= 0 && dataCol < MAX_COLUMNS && _colHidden[dataCol]) return;
+
     int cursorCol = sheetModel->getCurrentPosition().getCol();
 
-    // Calculate screen X for this column
+    // Calculate screen X for this column (skip hidden columns)
     int screenX = _rowHeaderWidth;
     int screenWidth = screen->cols();
     CxSheetCellCoordinate tempCoord;
 
     for (int c = _scrollColOffset; c < dataCol; c++) {
+        if (c >= 0 && c < MAX_COLUMNS && _colHidden[c]) continue;
         screenX += getColumnWidth(c);
     }
 
@@ -448,9 +469,15 @@ SheetView::drawRowNumbers(void)
     int numRows = visibleDataRows();
     int cursorRow = sheetModel->getCurrentPosition().getRow();
 
-    for (int r = 0; r < numRows; r++) {
-        int screenRow = _startRow + _colHeaderHeight + r;
-        int dataRow = r + _scrollRowOffset;
+    int screenRow = _startRow + _colHeaderHeight;
+    int dataRow = _scrollRowOffset;
+    int drawnRows = 0;
+
+    while (drawnRows < numRows) {
+        if (isRowHidden(dataRow)) {
+            dataRow++;
+            continue;
+        }
 
         CxScreen::placeCursor(screenRow, 0);
 
@@ -465,6 +492,10 @@ SheetView::drawRowNumbers(void)
         char rowNum[16];
         snprintf(rowNum, sizeof(rowNum), "%4d ", dataRow + 1);
         printf("%s", rowNum);
+
+        screenRow++;
+        dataRow++;
+        drawnRows++;
     }
 
     // Reset colors
@@ -695,11 +726,19 @@ void
 SheetView::drawCells(void)
 {
     int numRows = visibleDataRows();
+    int screenRow = _startRow + _colHeaderHeight;
+    int dataRow = _scrollRowOffset;
+    int drawnRows = 0;
 
-    for (int r = 0; r < numRows; r++) {
-        int screenRow = _startRow + _colHeaderHeight + r;
-        int dataRow = r + _scrollRowOffset;
+    while (drawnRows < numRows) {
+        if (isRowHidden(dataRow)) {
+            dataRow++;
+            continue;
+        }
         drawRow(screenRow, dataRow);
+        screenRow++;
+        dataRow++;
+        drawnRows++;
     }
 }
 
@@ -732,6 +771,8 @@ SheetView::drawRow(int screenRow, int dataRow)
 
     int sx = _rowHeaderWidth;
     for (int dc = _scrollColOffset; sx < screenWidth && numCols < MAX_VIS_COLS; dc++) {
+        if (dc >= MAX_COLUMNS) break;
+        if (_colHidden[dc]) continue;
         dataCols[numCols] = dc;
         screenXs[numCols] = sx;
         colWidths[numCols] = getColumnWidth(dc);
@@ -1703,8 +1744,9 @@ SheetView::visibleDataCols(void)
     int usedWidth = _rowHeaderWidth;
     int cols = 0;
 
-    // Count how many columns fit starting from scroll offset
+    // Count how many columns fit starting from scroll offset (skip hidden)
     for (int dataCol = _scrollColOffset; usedWidth < screenWidth && dataCol < MAX_COLUMNS; dataCol++) {
+        if (_colHidden[dataCol]) continue;
         usedWidth += getColumnWidth(dataCol);
         cols++;
     }
@@ -1727,14 +1769,31 @@ SheetView::ensureCursorVisible(void)
 
     int visRows = visibleDataRows();
 
-    // Vertical scrolling
+    // Vertical scrolling (account for hidden rows)
     if (row < _scrollRowOffset) {
         _scrollRowOffset = row;
-    } else if (row >= _scrollRowOffset + visRows) {
-        _scrollRowOffset = row - visRows + 1;
+    } else {
+        // Count visible rows from _scrollRowOffset to see if cursor is visible
+        int visibleCount = 0;
+        int r = _scrollRowOffset;
+        while (visibleCount < visRows && r < row) {
+            if (!isRowHidden(r)) visibleCount++;
+            r++;
+        }
+        if (visibleCount >= visRows) {
+            // Cursor is below visible area - adjust scroll offset
+            // Count backwards from cursor to find the right scroll offset
+            visibleCount = 0;
+            r = row;
+            while (visibleCount < visRows && r > 0) {
+                r--;
+                if (!isRowHidden(r)) visibleCount++;
+            }
+            _scrollRowOffset = r;
+        }
     }
 
-    // Horizontal scrolling - check if column is visible
+    // Horizontal scrolling - check if column is visible (skip hidden columns)
     if (col < _scrollColOffset) {
         // Scrolled too far right - scroll left to show this column
         _scrollColOffset = col;
@@ -1745,10 +1804,13 @@ SheetView::ensureCursorVisible(void)
         int colWidth = getColumnWidth(col);
 
         if (colScreenX + colWidth > screenWidth) {
-            // Need to scroll right - find the minimum scroll offset that shows this column
-            // Try scrolling right one column at a time until the column is visible
+            // Need to scroll right - skip hidden columns when scrolling
             while (colScreenX + colWidth > screenWidth && _scrollColOffset < col) {
                 _scrollColOffset++;
+                // Skip hidden columns for scroll offset
+                while (_scrollColOffset < col && _colHidden[_scrollColOffset]) {
+                    _scrollColOffset++;
+                }
                 colScreenX = getColumnScreenX(col);
             }
         }
@@ -1766,11 +1828,8 @@ SheetView::placeCursor(void)
 {
     CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
 
-    int row = pos.getRow() - _scrollRowOffset;
-    int dataCol = pos.getCol();
-
-    int screenRow = _startRow + _colHeaderHeight + row;
-    int screenCol = getColumnScreenX(dataCol);
+    int screenRow = dataRowToScreenRow(pos.getRow());
+    int screenCol = getColumnScreenX(pos.getCol());
 
     CxScreen::placeCursor(screenRow, screenCol);
 }
@@ -1848,9 +1907,11 @@ SheetView::getColumnScreenX(int col)
 {
     int screenX = _rowHeaderWidth;
 
-    // Sum widths of visible columns before this one
+    // Sum widths of visible (non-hidden) columns before this one
     for (int c = _scrollColOffset; c < col; c++) {
-        screenX += getColumnWidth(c);
+        if (!_colHidden[c]) {
+            screenX += getColumnWidth(c);
+        }
     }
 
     return screenX;
@@ -2391,6 +2452,32 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
                     _colBgColor[col] = ((CxJSONUTFString *)bgb)->get().toBytes();
                 }
             }
+
+            // Load hidden (boolean)
+            CxJSONUTFMember *hiddenMember = colObj->find("hidden");
+            if (hiddenMember != NULL) {
+                CxJSONUTFBase *hb = hiddenMember->object();
+                if (hb != NULL && hb->type() == CxJSONUTFBase::BOOLEAN) {
+                    _colHidden[col] = ((CxJSONUTFBoolean *)hb)->get() ? 1 : 0;
+                }
+            }
+        }
+    }
+
+    // Load hidden rows
+    CxJSONUTFMember *hiddenRowsMember = appData->find("hiddenRows");
+    if (hiddenRowsMember != NULL) {
+        CxJSONUTFBase *hrBase = hiddenRowsMember->object();
+        if (hrBase != NULL && hrBase->type() == CxJSONUTFBase::ARRAY) {
+            CxJSONUTFArray *hrArray = (CxJSONUTFArray *)hrBase;
+            _hiddenRowCount = 0;
+            for (int i = 0; i < hrArray->entries() && _hiddenRowCount < MAX_HIDDEN_ROWS; i++) {
+                CxJSONUTFBase *elem = hrArray->at(i);
+                if (elem != NULL && elem->type() == CxJSONUTFBase::NUMBER) {
+                    _hiddenRows[_hiddenRowCount] = (int)((CxJSONUTFNumber *)elem)->get();
+                    _hiddenRowCount++;
+                }
+            }
         }
     }
 }
@@ -2416,7 +2503,8 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
         if (_colWidths[col] != 0 || _colAlign[col] != 0 ||
             _colDecimalPlaces[col] >= 0 || _colCurrency[col] != 0 ||
             _colPercent[col] != 0 || _colThousands[col] != 0 ||
-            _colFgColor[col].length() > 0 || _colBgColor[col].length() > 0) {
+            _colFgColor[col].length() > 0 || _colBgColor[col].length() > 0 ||
+            _colHidden[col] != 0) {
             hasCustomSettings = 1;
             break;
         }
@@ -2455,9 +2543,10 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
         int hasThousands = (_colThousands[col] != 0);
         int hasFgColor = (_colFgColor[col].length() > 0);
         int hasBgColor = (_colBgColor[col].length() > 0);
+        int hasHidden = (_colHidden[col] != 0);
 
         if (!hasWidth && !hasAlign && !hasDecimal && !hasCurrency &&
-            !hasPercent && !hasThousands && !hasFgColor && !hasBgColor) {
+            !hasPercent && !hasThousands && !hasFgColor && !hasBgColor && !hasHidden) {
             continue;  // skip columns with no custom settings
         }
 
@@ -2515,6 +2604,12 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
             colObj->append(new CxJSONUTFMember("bgColor", bgStr));
         }
 
+        // Add hidden
+        if (hasHidden) {
+            CxJSONUTFBoolean *hiddenVal = new CxJSONUTFBoolean(1);
+            colObj->append(new CxJSONUTFMember("hidden", hiddenVal));
+        }
+
         CxJSONUTFMember *member = new CxJSONUTFMember(colName.data(), colObj);
         columns->append(member);
     }
@@ -2537,6 +2632,30 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
     // Add the new columns object
     CxJSONUTFMember *columnsMember = new CxJSONUTFMember("columns", columns);
     appData->append(columnsMember);
+
+    // Save hidden rows
+    // Remove existing hiddenRows entry if present
+    CxJSONUTFMember *existingHR = appData->find("hiddenRows");
+    if (existingHR != NULL) {
+        int numEntries2 = appData->entries();
+        for (int i = 0; i < numEntries2; i++) {
+            CxJSONUTFMember *m = appData->at(i);
+            CxUTFString mname = m->var();
+            if (mname.toBytes() == "hiddenRows") {
+                appData->removeAt(i);
+                delete existingHR;
+                break;
+            }
+        }
+    }
+
+    if (_hiddenRowCount > 0) {
+        CxJSONUTFArray *hrArray = new CxJSONUTFArray();
+        for (int i = 0; i < _hiddenRowCount; i++) {
+            hrArray->append(new CxJSONUTFNumber((double)_hiddenRows[i]));
+        }
+        appData->append(new CxJSONUTFMember("hiddenRows", hrArray));
+    }
 }
 
 
@@ -2714,14 +2833,18 @@ SheetView::shiftColumnWidths(int col, int direction)
         // Insert: shift right from end to col
         for (int i = MAX_COLUMNS - 1; i > col; i--) {
             _colWidths[i] = _colWidths[i - 1];
+            _colHidden[i] = _colHidden[i - 1];
         }
         _colWidths[col] = 0;  // new column gets default width
+        _colHidden[col] = 0;  // new column is visible
     } else if (direction < 0) {
         // Delete: shift left from col to end
         for (int i = col; i < MAX_COLUMNS - 1; i++) {
             _colWidths[i] = _colWidths[i + 1];
+            _colHidden[i] = _colHidden[i + 1];
         }
         _colWidths[MAX_COLUMNS - 1] = 0;
+        _colHidden[MAX_COLUMNS - 1] = 0;
     }
 }
 
@@ -2779,6 +2902,156 @@ SheetView::shiftColumnFormats(int col, int direction)
         _colFgColor[MAX_COLUMNS - 1] = "";
         _colBgColor[MAX_COLUMNS - 1] = "";
     }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// Hidden column/row support
+//-------------------------------------------------------------------------------------------------
+
+int
+SheetView::isColumnHidden(int col)
+{
+    if (col < 0 || col >= MAX_COLUMNS) return 0;
+    return _colHidden[col];
+}
+
+void
+SheetView::setColumnHidden(int col, int hidden)
+{
+    if (col < 0 || col >= MAX_COLUMNS) return;
+    _colHidden[col] = hidden ? 1 : 0;
+}
+
+int
+SheetView::isRowHidden(int row)
+{
+    if (row < 0) return 0;
+    for (int i = 0; i < _hiddenRowCount; i++) {
+        if (_hiddenRows[i] == row) return 1;
+        if (_hiddenRows[i] > row) return 0;  // sorted, no need to continue
+    }
+    return 0;
+}
+
+void
+SheetView::setRowHidden(int row, int hidden)
+{
+    if (row < 0) return;
+
+    if (hidden) {
+        // Check if already hidden
+        if (isRowHidden(row)) return;
+        if (_hiddenRowCount >= MAX_HIDDEN_ROWS) return;
+
+        // Insert in sorted order
+        int insertPos = _hiddenRowCount;
+        for (int i = 0; i < _hiddenRowCount; i++) {
+            if (_hiddenRows[i] > row) {
+                insertPos = i;
+                break;
+            }
+        }
+
+        // Shift entries right
+        for (int i = _hiddenRowCount; i > insertPos; i--) {
+            _hiddenRows[i] = _hiddenRows[i - 1];
+        }
+        _hiddenRows[insertPos] = row;
+        _hiddenRowCount++;
+    } else {
+        // Remove from sorted list
+        for (int i = 0; i < _hiddenRowCount; i++) {
+            if (_hiddenRows[i] == row) {
+                for (int j = i; j < _hiddenRowCount - 1; j++) {
+                    _hiddenRows[j] = _hiddenRows[j + 1];
+                }
+                _hiddenRowCount--;
+                return;
+            }
+        }
+    }
+}
+
+void
+SheetView::showAllRows(void)
+{
+    _hiddenRowCount = 0;
+}
+
+void
+SheetView::showAllColumns(void)
+{
+    for (int i = 0; i < MAX_COLUMNS; i++) {
+        _colHidden[i] = 0;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::shiftHiddenRows
+//
+// Shift hidden row indices when a row is inserted (+1) or deleted (-1).
+// For insert: all hidden rows at or after 'row' shift up by 1.
+// For delete: remove 'row' from hidden list, shift rows after 'row' down by 1.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::shiftHiddenRows(int row, int direction)
+{
+    if (direction > 0) {
+        // Insert: shift hidden rows at or after 'row' up by 1
+        for (int i = 0; i < _hiddenRowCount; i++) {
+            if (_hiddenRows[i] >= row) {
+                _hiddenRows[i]++;
+            }
+        }
+    } else {
+        // Delete: remove 'row' if hidden, shift rows after 'row' down by 1
+        int removed = 0;
+        for (int i = 0; i < _hiddenRowCount; i++) {
+            if (_hiddenRows[i] == row) {
+                removed = 1;
+                for (int j = i; j < _hiddenRowCount - 1; j++) {
+                    _hiddenRows[j] = _hiddenRows[j + 1];
+                }
+                _hiddenRowCount--;
+                i--;  // re-check this index
+            } else if (_hiddenRows[i] > row) {
+                _hiddenRows[i]--;
+            }
+        }
+        (void)removed;
+    }
+}
+
+
+int
+SheetView::nextVisibleRow(int row, int direction)
+{
+    // direction is +1 or -1
+    int r = row;
+    int limit = (direction > 0) ? 100000 : 0;
+
+    while (isRowHidden(r)) {
+        if ((direction > 0 && r >= limit) || (direction < 0 && r <= limit)) {
+            return row;  // no visible row found, return original
+        }
+        r += direction;
+    }
+    return r;
+}
+
+int
+SheetView::nextVisibleCol(int col, int direction)
+{
+    int c = col;
+    while (c >= 0 && c < MAX_COLUMNS && isColumnHidden(c)) {
+        c += direction;
+    }
+    if (c < 0 || c >= MAX_COLUMNS) {
+        return col;  // no visible column found, return original
+    }
+    return c;
 }
 
 
@@ -3025,4 +3298,43 @@ SheetView::getEffectiveBgColor(int col, CxSheetCell *cell)
 
     // 3. Default: terminal default
     return "";
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::dataRowToScreenRow
+//
+// Convert a data row to a screen row, accounting for hidden rows between
+// _scrollRowOffset and the target row.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::dataRowToScreenRow(int dataRow)
+{
+    int screenRow = _startRow + _colHeaderHeight;
+    for (int r = _scrollRowOffset; r < dataRow; r++) {
+        if (!isRowHidden(r)) screenRow++;
+    }
+    return screenRow;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::isDataRowVisible
+//
+// Check if a data row is within the currently visible screen area.
+// A row is visible if it's not hidden and falls within the rendered rows.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::isDataRowVisible(int dataRow)
+{
+    if (isRowHidden(dataRow)) return 0;
+    if (dataRow < _scrollRowOffset) return 0;
+
+    int visRows = visibleDataRows();
+    int visibleCount = 0;
+    for (int r = _scrollRowOffset; r <= dataRow; r++) {
+        if (!isRowHidden(r)) visibleCount++;
+        if (visibleCount > visRows) return 0;
+    }
+    return 1;
 }
