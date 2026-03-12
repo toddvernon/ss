@@ -79,24 +79,29 @@ CxSheetCellCoordinate _rangeCurrent;
 
 ---
 
-## Phase 5: Freeze Panes
+## Phase 5: Freeze Panes ✓
 
 Lock rows/columns so they stay visible while rest scrolls.
 
 **Commands:**
-- `view-freeze` - freeze rows above and columns left of cursor
+- `view-freeze` - freeze selected region (selection must start at A1)
 - `view-unfreeze` - remove freeze
 
+**Selection determines freeze region:**
+- A1:C1 (one row) → freeze columns A-C only
+- A1:A6 (one column) → freeze rows 1-6 only
+- A1:C6 (multi) → freeze both rows and columns
+
 **Visual:**
-- Double-line divider between frozen and scrolling regions
+- Double-line divider between frozen and scrolling regions (═ ║ ╬)
 - Frozen panes render at their fixed positions
 - Scroll offsets only apply to non-frozen area
+- Status line shows [Frozen] indicator
 
 **JSON storage:**
 ```json
 {
-  "freezeRow": 2,
-  "freezeCol": 1
+  "freeze": { "row": 2, "col": 1 }
 }
 ```
 
@@ -247,8 +252,7 @@ $1,234.56       1234.56   currency=true, thousands=true
 {
   "version": 1,
   "currentPosition": "A1",
-  "freezeRow": 0,
-  "freezeCol": 0,
+  "freeze": {"row": 0, "col": 0},
   "columns": {
     "A": {"width": 12, "hidden": false},
     "B": {"width": 25, "hidden": false}
@@ -312,7 +316,7 @@ $1,234.56       1234.56   currency=true, thousands=true
 | 2 | Column Width | ✓ Complete |
 | 3 | Copy/Paste | ✓ Complete |
 | 4 | Fill Operations | ✓ Complete |
-| 5 | Freeze Panes | Not started |
+| 5 | Freeze Panes | ✓ Complete |
 | 6 | Number Formatting | ✓ Complete |
 | 7 | Alignment | ✓ Complete |
 | 8 | Colors | ✓ Complete |
@@ -324,6 +328,8 @@ $1,234.56       1234.56   currency=true, thousands=true
 
 ## Remaining Work
 
-1. **Freeze Panes (Phase 5)** - lock rows/columns while scrolling
+All phases complete.
+
+1. ~~**Freeze Panes (Phase 5)** - lock rows/columns while scrolling~~ ✓ Complete
 2. ~~**Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations~~ ✓ Complete
 3. ~~**Dirty Tracking** - track unsaved changes to block exit without save prompt~~ ✓ Complete
