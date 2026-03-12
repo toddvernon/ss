@@ -165,6 +165,12 @@ class SheetView {
     void updateVisibleTextmapCells(void);
     // redraw visible cells that have textmap rules (display-layer dependencies)
 
+    // Freeze panes support
+    void setFreeze(int freezeRow, int freezeCol);
+    // set freeze pane counts (0 = no freeze)
+    void getFreeze(int *freezeRow, int *freezeCol);
+    // get current freeze pane counts
+
     CxString formatNumber(double value, int col, CxSheetCell *cell);
     // format number with currency, decimals, percent, thousands based on column/cell attributes
 
@@ -231,6 +237,9 @@ class SheetView {
     static const int MAX_HIDDEN_ROWS = 1000;
     int _hiddenRows[MAX_HIDDEN_ROWS];    // sorted list of hidden row indices
     int _hiddenRowCount;                 // number of entries in _hiddenRows
+
+    int _freezeRow;         // count of frozen rows (0=none, 2=rows 0-1 frozen)
+    int _freezeCol;         // count of frozen columns (0=none, 1=col A frozen)
 
     int _scrollRowOffset;   // first visible data row (0-based)
     int _scrollColOffset;   // first visible data column (0-based)
@@ -307,6 +316,21 @@ class SheetView {
 
     int isDataRowVisible(int dataRow);
     // check if a data row is within the visible screen area (not just not-hidden)
+
+    // Freeze pane helpers
+    int frozenRowsScreenHeight(void);
+    // count of visible (non-hidden) rows in the frozen region
+    int frozenColsScreenWidth(void);
+    // total screen width of frozen columns (non-hidden)
+    int freezeDividerRowHeight(void);
+    // returns 1 if freeze row divider active, 0 otherwise
+    int freezeDividerColWidth(void);
+    // returns 1 if freeze col divider active, 0 otherwise
+    void drawFreezeDividers(void);
+    // draw the freeze pane divider lines (═ ║ ╬)
+    void drawRowSegment(int screenRow, int dataRow, int colStart, int colEnd,
+                        int screenXStart, int screenXEnd);
+    // draw a segment of columns for one row (used by drawRow for freeze split)
 };
 
 

@@ -166,6 +166,10 @@ class SheetEditor {
     void CMD_ShowColumn(CxString commandLine);
     void CMD_ShowAll(CxString commandLine);
 
+    // View freeze commands
+    void CMD_ViewFreeze(CxString commandLine);
+    void CMD_ViewUnfreeze(CxString commandLine);
+
     // Column format commands
     void CMD_FormatColAlignLeft(CxString commandLine);
     void CMD_FormatColAlignCenter(CxString commandLine);

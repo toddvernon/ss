@@ -317,6 +317,21 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_ShowAll,
       NULL },
 
+    //--- view- ---------------------------------------------------------------
+    { "view-freeze",
+      NULL,
+      "Freeze selected rows/columns (selection must start at A1)",
+      0,
+      &SheetEditor::CMD_ViewFreeze,
+      NULL },
+
+    { "view-unfreeze",
+      NULL,
+      "Remove freeze panes",
+      0,
+      &SheetEditor::CMD_ViewUnfreeze,
+      NULL },
+
     //--- quit- ---------------------------------------------------------------
     { "quit-save",
       NULL,

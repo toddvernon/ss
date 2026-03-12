@@ -108,6 +108,10 @@ modify-cell-
 
 modify-show-all               Show all hidden rows and columns
 
+view-
+  view-freeze                 Freeze selected region (selection must start at A1)
+  view-unfreeze               Remove freeze panes
+
 quit-
   quit-save                   Save and quit
   quit-nosave                 Quit without saving

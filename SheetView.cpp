@@ -43,6 +43,8 @@ SheetView::SheetView(CxScreen *scr, CxSheetModel *model, SpreadsheetDefaults *de
 , _rowHeaderWidth(5)        // "9999 " - room for 4-digit row numbers
 , _colHeaderHeight(1)
 , _defaultColWidth(10)
+, _freezeRow(0)
+, _freezeCol(0)
 , _scrollRowOffset(0)
 , _scrollColOffset(0)
 , _inCellHuntMode(0)
@@ -124,6 +126,7 @@ SheetView::updateScreen(void)
     drawColumnHeaders();
     drawRowNumbers();
     drawCells();
+    drawFreezeDividers();
 
     // Draw status/divider line at bottom of sheet area
     updateStatusLine();
@@ -156,6 +159,7 @@ SheetView::updateScreenForColumnChange(void)
     // Draw components (skip row numbers - they don't change for column ops)
     drawColumnHeaders();
     drawCells();
+    drawFreezeDividers();
 
     // Draw status/divider line at bottom of sheet area
     updateStatusLine();
@@ -203,12 +207,28 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
         }
     }
 
-    // Redraw each affected row using overflow-aware drawRow()
+    // Redraw each affected row
     for (int i = 0; i < numAffectedRows; i++) {
         int dataRow = affectedRows[i];
         int screenRow = dataRowToScreenRow(dataRow);
         if (screenRow < 0) continue;
-        drawRow(screenRow, dataRow);
+
+        if (_freezeRow > 0 || _freezeCol > 0) {
+            // Use segment-based drawing to respect freeze boundaries
+            int screenWidth = screen->cols();
+            int frozenWidth = frozenColsScreenWidth();
+            int divColW = freezeDividerColWidth();
+            int scrollableColStart = _rowHeaderWidth + frozenWidth + divColW;
+
+            if (_freezeCol > 0) {
+                drawRowSegment(screenRow, dataRow, 0, _freezeCol,
+                               _rowHeaderWidth, _rowHeaderWidth + frozenWidth);
+            }
+            drawRowSegment(screenRow, dataRow, _scrollColOffset, MAX_COLUMNS,
+                           scrollableColStart, screenWidth);
+        } else {
+            drawRow(screenRow, dataRow);
+        }
     }
 }
 
@@ -224,16 +244,45 @@ SheetView::updateCells(CxSList<CxSheetCellCoordinate> cells)
 void
 SheetView::updateVisibleTextmapCells(void)
 {
-    int visRows = visibleDataRows();
     int screenWidth = screen->cols();
     int redrew = 0;
 
+    // Helper: check if a row has textmap cells and redraw if so
+    // Check frozen rows first, then scrollable rows
+    // For frozen rows:
+    if (_freezeRow > 0) {
+        int screenRow = _startRow + _colHeaderHeight;
+        for (int dr = 0; dr < _freezeRow; dr++) {
+            if (isRowHidden(dr)) continue;
+            int rowHasTextmap = 0;
+            int screenX = _rowHeaderWidth;
+            for (int c = 0; screenX < screenWidth; c++) {
+                if (c >= MAX_COLUMNS) break;
+                if (_colHidden[c]) continue;
+                screenX += getColumnWidth(c);
+                CxSheetCell cell = sheetModel->getCell(CxSheetCellCoordinate(dr, c));
+                if (cell.appAttributes != NULL) {
+                    CxString textmap = cell.getAppAttributeString("textmap");
+                    if (textmap.length() > 0) { rowHasTextmap = 1; break; }
+                }
+            }
+            if (rowHasTextmap) {
+                drawRow(screenRow, dr);
+                redrew = 1;
+            }
+            screenRow++;
+        }
+    }
+
+    // Scrollable rows
+    int visRows = visibleDataRows();
     for (int r = 0; r < visRows; r++) {
         int dataRow = _scrollRowOffset + r;
         int screenX = _rowHeaderWidth;
         int rowHasTextmap = 0;
 
         for (int c = _scrollColOffset; screenX < screenWidth; c++) {
+            if (c >= MAX_COLUMNS) break;
             int colWidth = getColumnWidth(c);
             screenX += colWidth;
 
@@ -248,13 +297,13 @@ SheetView::updateVisibleTextmapCells(void)
         }
 
         if (rowHasTextmap) {
-            int screenRow = _startRow + _colHeaderHeight + r;
+            int screenRow = dataRowToScreenRow(dataRow);
             drawRow(screenRow, dataRow);
             redrew = 1;
         }
     }
 
-    (void)redrew;  // Variable tracked for potential future use
+    (void)redrew;
 }
 
 
@@ -289,8 +338,8 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
         // Horizontal scroll always requires full redraw (column headers change)
         updateScreen();
     } else if (needsRowScroll) {
-        // When hidden rows exist, delta scroll math gets complex - use full redraw
-        if (_hiddenRowCount > 0) {
+        // When hidden rows or freeze panes exist, use full redraw
+        if (_hiddenRowCount > 0 || _freezeRow > 0 || _freezeCol > 0) {
             updateScreen();
         } else {
             // Calculate how many rows we need to scroll
@@ -358,40 +407,70 @@ SheetView::drawColumnHeaders(void)
         printf(" ");
     }
 
-    // Column headers - iterate until we run out of screen width
     int screenX = _rowHeaderWidth;
     int screenWidth = screen->cols();
     CxSheetCellCoordinate tempCoord;
 
+    // Pass 1: Frozen columns (0 to _freezeCol-1)
+    if (_freezeCol > 0) {
+        for (int dataCol = 0; screenX < screenWidth && dataCol < _freezeCol; dataCol++) {
+            if (_colHidden[dataCol]) continue;
+
+            int colWidth = getColumnWidth(dataCol);
+            CxString colName = tempCoord.colToLetters(dataCol);
+
+            if (dataCol == cursorCol) {
+                _defaults->applyHeaderHighlightColors(screen);
+            }
+
+            int padding = (colWidth - colName.length()) / 2;
+            for (int p = 0; p < padding && screenX < screenWidth; p++) {
+                printf(" "); screenX++;
+            }
+            for (int i = 0; i < (int)colName.length() && screenX < screenWidth; i++) {
+                printf("%c", colName.data()[i]); screenX++;
+            }
+            int remaining = colWidth - padding - colName.length();
+            for (int p = 0; p < remaining && screenX < screenWidth; p++) {
+                printf(" "); screenX++;
+            }
+
+            if (dataCol == cursorCol) {
+                _defaults->applyHeaderColors(screen);
+            }
+        }
+
+        // Skip the divider column (drawn by drawFreezeDividers)
+        if (screenX < screenWidth) {
+            printf(" ");
+            screenX++;
+        }
+    }
+
+    // Pass 2: Scrollable columns (from _scrollColOffset)
     for (int dataCol = _scrollColOffset; screenX < screenWidth; dataCol++) {
+        if (dataCol >= MAX_COLUMNS) break;
         if (_colHidden[dataCol]) continue;
 
         int colWidth = getColumnWidth(dataCol);
         CxString colName = tempCoord.colToLetters(dataCol);
 
-        // Switch to highlight colors for cursor column
         if (dataCol == cursorCol) {
             _defaults->applyHeaderHighlightColors(screen);
         }
 
-        // Center the column name in the column width
         int padding = (colWidth - colName.length()) / 2;
         for (int p = 0; p < padding && screenX < screenWidth; p++) {
-            printf(" ");
-            screenX++;
+            printf(" "); screenX++;
         }
-        // Print column name (truncate if needed)
         for (int i = 0; i < (int)colName.length() && screenX < screenWidth; i++) {
-            printf("%c", colName.data()[i]);
-            screenX++;
+            printf("%c", colName.data()[i]); screenX++;
         }
         int remaining = colWidth - padding - colName.length();
         for (int p = 0; p < remaining && screenX < screenWidth; p++) {
-            printf(" ");
-            screenX++;
+            printf(" "); screenX++;
         }
 
-        // Switch back to normal header colors after cursor column
         if (dataCol == cursorCol) {
             _defaults->applyHeaderColors(screen);
         }
@@ -414,16 +493,11 @@ SheetView::drawColumnHeader(int dataCol)
     if (dataCol >= 0 && dataCol < MAX_COLUMNS && _colHidden[dataCol]) return;
 
     int cursorCol = sheetModel->getCurrentPosition().getCol();
-
-    // Calculate screen X for this column (skip hidden columns)
-    int screenX = _rowHeaderWidth;
     int screenWidth = screen->cols();
     CxSheetCellCoordinate tempCoord;
 
-    for (int c = _scrollColOffset; c < dataCol; c++) {
-        if (c >= 0 && c < MAX_COLUMNS && _colHidden[c]) continue;
-        screenX += getColumnWidth(c);
-    }
+    // Calculate screen X using freeze-aware getColumnScreenX
+    int screenX = getColumnScreenX(dataCol);
 
     // Off-screen check
     if (screenX >= screenWidth) return;
@@ -466,10 +540,35 @@ SheetView::drawColumnHeader(int dataCol)
 void
 SheetView::drawRowNumbers(void)
 {
-    int numRows = visibleDataRows();
     int cursorRow = sheetModel->getCurrentPosition().getRow();
-
     int screenRow = _startRow + _colHeaderHeight;
+
+    // Pass 1: Frozen rows (0 to _freezeRow-1)
+    if (_freezeRow > 0) {
+        for (int dataRow = 0; dataRow < _freezeRow; dataRow++) {
+            if (isRowHidden(dataRow)) continue;
+
+            CxScreen::placeCursor(screenRow, 0);
+
+            if (dataRow == cursorRow) {
+                _defaults->applyHeaderHighlightColors(screen);
+            } else {
+                _defaults->applyHeaderColors(screen);
+            }
+
+            char rowNum[16];
+            snprintf(rowNum, sizeof(rowNum), "%4d ", dataRow + 1);
+            printf("%s", rowNum);
+
+            screenRow++;
+        }
+
+        // Skip divider row
+        screenRow += freezeDividerRowHeight();
+    }
+
+    // Pass 2: Scrollable rows
+    int numRows = visibleDataRows();
     int dataRow = _scrollRowOffset;
     int drawnRows = 0;
 
@@ -481,14 +580,12 @@ SheetView::drawRowNumbers(void)
 
         CxScreen::placeCursor(screenRow, 0);
 
-        // Apply highlight colors for cursor row, normal for others
         if (dataRow == cursorRow) {
             _defaults->applyHeaderHighlightColors(screen);
         } else {
             _defaults->applyHeaderColors(screen);
         }
 
-        // Row number (1-based display)
         char rowNum[16];
         snprintf(rowNum, sizeof(rowNum), "%4d ", dataRow + 1);
         printf("%s", rowNum);
@@ -538,6 +635,12 @@ SheetView::drawRowNumber(int screenRow, int dataRow)
 void
 SheetView::deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCoordinate newPos)
 {
+    // Freeze active - fall back to full redraw (scroll regions get complex)
+    if (_freezeRow > 0 || _freezeCol > 0) {
+        updateScreen();
+        return;
+    }
+
     CxScreen::beginSyncUpdate();
 
     // Calculate the data area boundaries (excluding column header and status line)
@@ -612,6 +715,9 @@ SheetView::deltaScroll(int rowDelta, CxSheetCellCoordinate oldPos, CxSheetCellCo
 int
 SheetView::terminalInsertRow(int dataRow)
 {
+    // Freeze active - fall back to full redraw
+    if (_freezeRow > 0 || _freezeCol > 0) return 0;
+
     int visRows = visibleDataRows();
 
     // Check if inserted row is visible
@@ -670,6 +776,9 @@ SheetView::terminalInsertRow(int dataRow)
 int
 SheetView::terminalDeleteRow(int dataRow)
 {
+    // Freeze active - fall back to full redraw
+    if (_freezeRow > 0 || _freezeCol > 0) return 0;
+
     int visRows = visibleDataRows();
 
     // Check if deleted row is visible
@@ -725,20 +834,78 @@ SheetView::terminalDeleteRow(int dataRow)
 void
 SheetView::drawCells(void)
 {
-    int numRows = visibleDataRows();
-    int screenRow = _startRow + _colHeaderHeight;
-    int dataRow = _scrollRowOffset;
-    int drawnRows = 0;
+    int screenWidth = screen->cols();
+    int screenRow;
 
-    while (drawnRows < numRows) {
-        if (isRowHidden(dataRow)) {
-            dataRow++;
-            continue;
+    // When freeze is active, use drawRowSegment for four-quadrant rendering
+    if (_freezeRow > 0 || _freezeCol > 0) {
+        int frozenWidth = frozenColsScreenWidth();
+        int divColW = freezeDividerColWidth();
+        int scrollableColStart = _rowHeaderWidth + frozenWidth + divColW;
+
+        // Q1 + Q2: Frozen rows
+        if (_freezeRow > 0) {
+            screenRow = _startRow + _colHeaderHeight;
+            for (int dr = 0; dr < _freezeRow; dr++) {
+                if (isRowHidden(dr)) continue;
+
+                // Q1: frozen rows × frozen cols
+                if (_freezeCol > 0) {
+                    drawRowSegment(screenRow, dr, 0, _freezeCol,
+                                   _rowHeaderWidth, _rowHeaderWidth + frozenWidth);
+                }
+                // Q2: frozen rows × scrollable cols
+                drawRowSegment(screenRow, dr, _scrollColOffset, MAX_COLUMNS,
+                               scrollableColStart, screenWidth);
+                screenRow++;
+            }
         }
-        drawRow(screenRow, dataRow);
-        screenRow++;
-        dataRow++;
-        drawnRows++;
+
+        // Skip divider row
+        screenRow = _startRow + _colHeaderHeight + frozenRowsScreenHeight()
+                    + freezeDividerRowHeight();
+
+        // Q3 + Q4: Scrollable rows
+        int numRows = visibleDataRows();
+        int dataRow = _scrollRowOffset;
+        int drawnRows = 0;
+
+        while (drawnRows < numRows) {
+            if (isRowHidden(dataRow)) {
+                dataRow++;
+                continue;
+            }
+
+            // Q3: scrollable rows × frozen cols
+            if (_freezeCol > 0) {
+                drawRowSegment(screenRow, dataRow, 0, _freezeCol,
+                               _rowHeaderWidth, _rowHeaderWidth + frozenWidth);
+            }
+            // Q4: scrollable rows × scrollable cols
+            drawRowSegment(screenRow, dataRow, _scrollColOffset, MAX_COLUMNS,
+                           scrollableColStart, screenWidth);
+
+            screenRow++;
+            dataRow++;
+            drawnRows++;
+        }
+    } else {
+        // No freeze - original path
+        int numRows = visibleDataRows();
+        screenRow = _startRow + _colHeaderHeight;
+        int dataRow = _scrollRowOffset;
+        int drawnRows = 0;
+
+        while (drawnRows < numRows) {
+            if (isRowHidden(dataRow)) {
+                dataRow++;
+                continue;
+            }
+            drawRow(screenRow, dataRow);
+            screenRow++;
+            dataRow++;
+            drawnRows++;
+        }
     }
 }
 
@@ -1727,7 +1894,8 @@ SheetView::formatSymbolFill(CxString symbolType, int width)
 int
 SheetView::visibleDataRows(void)
 {
-    int availableRows = _endRow - _startRow - _colHeaderHeight;
+    int availableRows = _endRow - _startRow - _colHeaderHeight
+                        - frozenRowsScreenHeight() - freezeDividerRowHeight();
     return availableRows > 0 ? availableRows : 0;
 }
 
@@ -1741,10 +1909,10 @@ int
 SheetView::visibleDataCols(void)
 {
     int screenWidth = screen->cols();
-    int usedWidth = _rowHeaderWidth;
+    int usedWidth = _rowHeaderWidth + frozenColsScreenWidth() + freezeDividerColWidth();
     int cols = 0;
 
-    // Count how many columns fit starting from scroll offset (skip hidden)
+    // Count how many scrollable columns fit starting from scroll offset (skip hidden)
     for (int dataCol = _scrollColOffset; usedWidth < screenWidth && dataCol < MAX_COLUMNS; dataCol++) {
         if (_colHidden[dataCol]) continue;
         usedWidth += getColumnWidth(dataCol);
@@ -1767,51 +1935,67 @@ SheetView::ensureCursorVisible(void)
     int row = pos.getRow();
     int col = pos.getCol();
 
-    int visRows = visibleDataRows();
+    // Enforce scroll offset minimums for freeze panes
+    if (_scrollRowOffset < _freezeRow) {
+        _scrollRowOffset = _freezeRow;
+    }
+    if (_scrollColOffset < _freezeCol) {
+        _scrollColOffset = _freezeCol;
+    }
 
-    // Vertical scrolling (account for hidden rows)
-    if (row < _scrollRowOffset) {
-        _scrollRowOffset = row;
+    // Vertical scrolling - frozen rows are always visible
+    if (_freezeRow > 0 && row < _freezeRow) {
+        // Row is in frozen area - always visible, no vertical scroll needed
     } else {
-        // Count visible rows from _scrollRowOffset to see if cursor is visible
-        int visibleCount = 0;
-        int r = _scrollRowOffset;
-        while (visibleCount < visRows && r < row) {
-            if (!isRowHidden(r)) visibleCount++;
-            r++;
-        }
-        if (visibleCount >= visRows) {
-            // Cursor is below visible area - adjust scroll offset
-            // Count backwards from cursor to find the right scroll offset
-            visibleCount = 0;
-            r = row;
-            while (visibleCount < visRows && r > 0) {
-                r--;
+        int visRows = visibleDataRows();
+
+        if (row < _scrollRowOffset) {
+            _scrollRowOffset = row;
+            if (_scrollRowOffset < _freezeRow) _scrollRowOffset = _freezeRow;
+        } else {
+            // Count visible rows from _scrollRowOffset to see if cursor is visible
+            int visibleCount = 0;
+            int r = _scrollRowOffset;
+            while (visibleCount < visRows && r < row) {
                 if (!isRowHidden(r)) visibleCount++;
+                r++;
             }
-            _scrollRowOffset = r;
+            if (visibleCount >= visRows) {
+                // Cursor is below visible area - adjust scroll offset
+                visibleCount = 0;
+                r = row;
+                while (visibleCount < visRows && r > 0) {
+                    r--;
+                    if (!isRowHidden(r)) visibleCount++;
+                }
+                _scrollRowOffset = r;
+                if (_scrollRowOffset < _freezeRow) _scrollRowOffset = _freezeRow;
+            }
         }
     }
 
-    // Horizontal scrolling - check if column is visible (skip hidden columns)
-    if (col < _scrollColOffset) {
-        // Scrolled too far right - scroll left to show this column
-        _scrollColOffset = col;
+    // Horizontal scrolling - frozen cols are always visible
+    if (_freezeCol > 0 && col < _freezeCol) {
+        // Column is in frozen area - always visible, no horizontal scroll needed
     } else {
-        // Check if column extends past right edge of screen
-        int screenWidth = screen->cols();
-        int colScreenX = getColumnScreenX(col);
-        int colWidth = getColumnWidth(col);
+        if (col < _scrollColOffset) {
+            _scrollColOffset = col;
+            if (_scrollColOffset < _freezeCol) _scrollColOffset = _freezeCol;
+        } else {
+            // Check if column extends past right edge of screen
+            int screenWidth = screen->cols();
+            int colScreenX = getColumnScreenX(col);
+            int colWidth = getColumnWidth(col);
 
-        if (colScreenX + colWidth > screenWidth) {
-            // Need to scroll right - skip hidden columns when scrolling
-            while (colScreenX + colWidth > screenWidth && _scrollColOffset < col) {
-                _scrollColOffset++;
-                // Skip hidden columns for scroll offset
-                while (_scrollColOffset < col && _colHidden[_scrollColOffset]) {
+            if (colScreenX + colWidth > screenWidth) {
+                // Need to scroll right - skip hidden columns when scrolling
+                while (colScreenX + colWidth > screenWidth && _scrollColOffset < col) {
                     _scrollColOffset++;
+                    while (_scrollColOffset < col && _colHidden[_scrollColOffset]) {
+                        _scrollColOffset++;
+                    }
+                    colScreenX = getColumnScreenX(col);
                 }
-                colScreenX = getColumnScreenX(col);
             }
         }
     }
@@ -1905,9 +2089,18 @@ SheetView::setColumnWidth(int col, int width)
 int
 SheetView::getColumnScreenX(int col)
 {
-    int screenX = _rowHeaderWidth;
+    // Frozen columns: positioned starting at _rowHeaderWidth
+    if (_freezeCol > 0 && col < _freezeCol) {
+        int screenX = _rowHeaderWidth;
+        for (int c = 0; c < col; c++) {
+            if (!_colHidden[c]) screenX += getColumnWidth(c);
+        }
+        return screenX;
+    }
 
-    // Sum widths of visible (non-hidden) columns before this one
+    // Scrollable columns: positioned after frozen cols + divider
+    int screenX = _rowHeaderWidth + frozenColsScreenWidth() + freezeDividerColWidth();
+
     for (int c = _scrollColOffset; c < col; c++) {
         if (!_colHidden[c]) {
             screenX += getColumnWidth(c);
@@ -2265,6 +2458,11 @@ SheetView::updateStatusLine(void)
     }
     leftPart += " ] ";
 
+    // Show freeze indicator
+    if (_freezeRow > 0 || _freezeCol > 0) {
+        leftPart += "[Frozen] ";
+    }
+
     // Calculate display width for left part (2 fill chars + text)
     int leftDisplayWidth = 2;  // two fill chars
     leftDisplayWidth += 15;    // " ss: Editing [ "
@@ -2274,6 +2472,9 @@ SheetView::updateStatusLine(void)
         leftDisplayWidth += 10;  // "(untitled)"
     }
     leftDisplayWidth += 3;     // " ] "
+    if (_freezeRow > 0 || _freezeCol > 0) {
+        leftDisplayWidth += 9;  // "[Frozen] "
+    }
 
     // Build right part: cell(<address>) or cell(<anchor>:<current>) for range
     CxString cellAddress;
@@ -2330,6 +2531,48 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
 {
     if (appData == NULL) {
         return;
+    }
+
+    // Load freeze pane state: { "freeze": { "row": N, "col": N } }
+    CxJSONUTFMember *freezeMember = appData->find("freeze");
+    if (freezeMember != NULL) {
+        CxJSONUTFBase *fBase = freezeMember->object();
+        if (fBase != NULL && fBase->type() == CxJSONUTFBase::OBJECT) {
+            CxJSONUTFObject *freezeObj = (CxJSONUTFObject *)fBase;
+            CxJSONUTFMember *rowM = freezeObj->find("row");
+            if (rowM != NULL) {
+                CxJSONUTFBase *rv = rowM->object();
+                if (rv != NULL && rv->type() == CxJSONUTFBase::NUMBER) {
+                    _freezeRow = (int)((CxJSONUTFNumber *)rv)->get();
+                }
+            }
+            CxJSONUTFMember *colM = freezeObj->find("col");
+            if (colM != NULL) {
+                CxJSONUTFBase *cv = colM->object();
+                if (cv != NULL && cv->type() == CxJSONUTFBase::NUMBER) {
+                    _freezeCol = (int)((CxJSONUTFNumber *)cv)->get();
+                }
+            }
+        }
+    }
+    if (_scrollRowOffset < _freezeRow) _scrollRowOffset = _freezeRow;
+    if (_scrollColOffset < _freezeCol) _scrollColOffset = _freezeCol;
+
+    // Load hidden rows (also before columns check)
+    CxJSONUTFMember *hiddenRowsMemberEarly = appData->find("hiddenRows");
+    if (hiddenRowsMemberEarly != NULL) {
+        CxJSONUTFBase *hrBase = hiddenRowsMemberEarly->object();
+        if (hrBase != NULL && hrBase->type() == CxJSONUTFBase::ARRAY) {
+            CxJSONUTFArray *hrArray = (CxJSONUTFArray *)hrBase;
+            _hiddenRowCount = 0;
+            for (int i = 0; i < hrArray->entries() && _hiddenRowCount < MAX_HIDDEN_ROWS; i++) {
+                CxJSONUTFBase *elem = hrArray->at(i);
+                if (elem != NULL && elem->type() == CxJSONUTFBase::NUMBER) {
+                    _hiddenRows[_hiddenRowCount] = (int)((CxJSONUTFNumber *)elem)->get();
+                    _hiddenRowCount++;
+                }
+            }
+        }
     }
 
     // Look for "columns" object
@@ -2464,22 +2707,6 @@ SheetView::loadColumnWidthsFromAppData(CxJSONUTFObject* appData)
         }
     }
 
-    // Load hidden rows
-    CxJSONUTFMember *hiddenRowsMember = appData->find("hiddenRows");
-    if (hiddenRowsMember != NULL) {
-        CxJSONUTFBase *hrBase = hiddenRowsMember->object();
-        if (hrBase != NULL && hrBase->type() == CxJSONUTFBase::ARRAY) {
-            CxJSONUTFArray *hrArray = (CxJSONUTFArray *)hrBase;
-            _hiddenRowCount = 0;
-            for (int i = 0; i < hrArray->entries() && _hiddenRowCount < MAX_HIDDEN_ROWS; i++) {
-                CxJSONUTFBase *elem = hrArray->at(i);
-                if (elem != NULL && elem->type() == CxJSONUTFBase::NUMBER) {
-                    _hiddenRows[_hiddenRowCount] = (int)((CxJSONUTFNumber *)elem)->get();
-                    _hiddenRowCount++;
-                }
-            }
-        }
-    }
 }
 
 
@@ -2655,6 +2882,31 @@ SheetView::saveColumnWidthsToAppData(CxJSONUTFObject* appData)
             hrArray->append(new CxJSONUTFNumber((double)_hiddenRows[i]));
         }
         appData->append(new CxJSONUTFMember("hiddenRows", hrArray));
+    }
+
+    // Save freeze pane state as object: { "freeze": { "row": N, "col": N } }
+    // (appData merge in sheetModel only copies OBJECT-type members)
+    CxJSONUTFMember *existingFreeze = appData->find("freeze");
+    if (existingFreeze != NULL) {
+        int numEntriesF = appData->entries();
+        for (int i = 0; i < numEntriesF; i++) {
+            CxJSONUTFMember *m = appData->at(i);
+            CxUTFString mname = m->var();
+            if (mname.toBytes() == "freeze") {
+                appData->removeAt(i);
+                delete existingFreeze;
+                break;
+            }
+        }
+    }
+
+    if (_freezeRow > 0 || _freezeCol > 0) {
+        CxJSONUTFObject *freezeObj = new CxJSONUTFObject();
+        freezeObj->append(new CxJSONUTFMember("row",
+            new CxJSONUTFNumber((double)_freezeRow)));
+        freezeObj->append(new CxJSONUTFMember("col",
+            new CxJSONUTFNumber((double)_freezeCol)));
+        appData->append(new CxJSONUTFMember("freeze", freezeObj));
     }
 }
 
@@ -3302,15 +3554,358 @@ SheetView::getEffectiveBgColor(int col, CxSheetCell *cell)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetView::setFreeze
+//
+// Set freeze pane counts. Enforce scroll offset minimums.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::setFreeze(int freezeRow, int freezeCol)
+{
+    _freezeRow = freezeRow;
+    _freezeCol = freezeCol;
+
+    // Enforce scroll offset minimums so scrollable area starts after frozen
+    if (_scrollRowOffset < _freezeRow) {
+        _scrollRowOffset = _freezeRow;
+    }
+    if (_scrollColOffset < _freezeCol) {
+        _scrollColOffset = _freezeCol;
+    }
+
+    ensureCursorVisible();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::getFreeze
+//
+// Get current freeze pane counts.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::getFreeze(int *freezeRow, int *freezeCol)
+{
+    if (freezeRow != NULL) *freezeRow = _freezeRow;
+    if (freezeCol != NULL) *freezeCol = _freezeCol;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::frozenRowsScreenHeight
+//
+// Count of visible (non-hidden) rows in the frozen region (0 to _freezeRow-1).
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::frozenRowsScreenHeight(void)
+{
+    int count = 0;
+    for (int r = 0; r < _freezeRow; r++) {
+        if (!isRowHidden(r)) count++;
+    }
+    return count;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::frozenColsScreenWidth
+//
+// Total screen width of frozen columns (non-hidden, cols 0 to _freezeCol-1).
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::frozenColsScreenWidth(void)
+{
+    int width = 0;
+    for (int c = 0; c < _freezeCol; c++) {
+        if (!_colHidden[c]) width += getColumnWidth(c);
+    }
+    return width;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::freezeDividerRowHeight
+//
+// Returns 1 if freeze row divider is active, 0 otherwise.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::freezeDividerRowHeight(void)
+{
+    return (_freezeRow > 0) ? 1 : 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::freezeDividerColWidth
+//
+// Returns 1 if freeze col divider is active, 0 otherwise.
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::freezeDividerColWidth(void)
+{
+    return (_freezeCol > 0) ? 1 : 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::drawFreezeDividers
+//
+// Draw the freeze pane divider lines using double-line box drawing characters.
+// Horizontal: ═ (U+2550), Vertical: ║ (U+2551), Cross: ╬ (U+256C)
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::drawFreezeDividers(void)
+{
+    if (_freezeRow == 0 && _freezeCol == 0) return;
+
+    static const char *HORIZ = "\xe2\x95\x90";   // ═
+    static const char *VERT  = "\xe2\x95\x91";    // ║
+    static const char *CROSS = "\xe2\x95\xac";    // ╬
+
+    int screenWidth = screen->cols();
+    int frozenHeight = frozenRowsScreenHeight();
+
+    // Divider row screen position (right after frozen rows)
+    int dividerScreenRow = _startRow + _colHeaderHeight + frozenHeight;
+
+    // Divider col screen position (right after frozen cols + row header)
+    int frozenWidth = frozenColsScreenWidth();
+    int dividerScreenCol = _rowHeaderWidth + frozenWidth;
+
+    _defaults->applyHeaderColors(screen);
+
+    // Draw horizontal divider (═) across the row
+    if (_freezeRow > 0) {
+        CxScreen::placeCursor(dividerScreenRow, 0);
+
+        // Fill row header area with ═
+        for (int x = 0; x < _rowHeaderWidth; x++) {
+            printf("%s", HORIZ);
+        }
+
+        // Fill data columns area with ═
+        for (int x = _rowHeaderWidth; x < screenWidth; x++) {
+            if (_freezeCol > 0 && x == dividerScreenCol) {
+                printf("%s", CROSS);
+            } else {
+                printf("%s", HORIZ);
+            }
+        }
+    }
+
+    // Draw vertical divider (║) down the column
+    if (_freezeCol > 0) {
+        int dataStartScreenRow = _startRow + _colHeaderHeight;
+        int dataEndScreenRow = _endRow - 1;
+
+        // Draw the column header portion of the vertical divider
+        CxScreen::placeCursor(_startRow, dividerScreenCol);
+        printf("%s", VERT);
+
+        for (int sr = dataStartScreenRow; sr <= dataEndScreenRow; sr++) {
+            if (_freezeRow > 0 && sr == dividerScreenRow) {
+                continue;  // already drew cross at intersection
+            }
+            CxScreen::placeCursor(sr, dividerScreenCol);
+            printf("%s", VERT);
+        }
+    }
+
+    _defaults->resetColors(screen);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::drawRowSegment
+//
+// Draw a segment of columns for one row, constrained to [colStart, colEnd) data columns
+// and clipped to [screenXStart, screenXEnd) screen X range.
+// Handles overflow within the segment boundaries — overflow does NOT cross segment boundaries.
+//-------------------------------------------------------------------------------------------------
+void
+SheetView::drawRowSegment(int screenRow, int dataRow, int colStart, int colEnd,
+                          int screenXStart, int screenXEnd)
+{
+    static const int MAX_VIS_COLS = 128;
+
+    // Collect visible columns in this segment
+    int dataCols[MAX_VIS_COLS];
+    int screenXs[MAX_VIS_COLS];
+    int colWidths_s[MAX_VIS_COLS];
+    int numCols = 0;
+
+    int sx = screenXStart;
+    for (int dc = colStart; sx < screenXEnd && numCols < MAX_VIS_COLS; dc++) {
+        if (dc >= colEnd || dc >= MAX_COLUMNS) break;
+        if (_colHidden[dc]) continue;
+        int cw = getColumnWidth(dc);
+        dataCols[numCols] = dc;
+        screenXs[numCols] = sx;
+        colWidths_s[numCols] = cw;
+        numCols++;
+        sx += cw;
+    }
+
+    if (numCols == 0) return;
+
+    // Overflow calculation (same logic as drawRow, but confined to segment)
+    int effectiveWidth[MAX_VIS_COLS];
+    int claimedBy[MAX_VIS_COLS];
+    for (int i = 0; i < numCols; i++) {
+        effectiveWidth[i] = colWidths_s[i];
+        claimedBy[i] = -1;
+    }
+
+    // Pass 1: left-aligned text overflow (left-to-right)
+    for (int i = 0; i < numCols; i++) {
+        CxSheetCell *cell = sheetModel->getCellPtr(
+            CxSheetCellCoordinate(dataRow, dataCols[i]));
+        if (cell == NULL || !isCellTextType(cell)) continue;
+        CxString align = getCellAlignment(cell);
+        if (align != "left") continue;
+        int contentWidth = getCellContentWidth(cell, dataCols[i]);
+        if (contentWidth <= colWidths_s[i]) continue;
+
+        int totalWidth = colWidths_s[i];
+        for (int j = i + 1; j < numCols && totalWidth < contentWidth; j++) {
+            if (claimedBy[j] != -1) break;
+            if (isCellOccupied(dataRow, dataCols[j])) break;
+            HighlightType ht = getHighlightTypeForCell(dataRow, dataCols[j]);
+            if (ht != HIGHLIGHT_NONE) break;
+            claimedBy[j] = i;
+            totalWidth += colWidths_s[j];
+        }
+        effectiveWidth[i] = totalWidth;
+    }
+
+    // Pass 2: right-aligned text overflow (right-to-left)
+    for (int i = numCols - 1; i >= 0; i--) {
+        CxSheetCell *cell = sheetModel->getCellPtr(
+            CxSheetCellCoordinate(dataRow, dataCols[i]));
+        if (cell == NULL || !isCellTextType(cell)) continue;
+        CxString align = getCellAlignment(cell);
+        if (align != "right") continue;
+        int contentWidth = getCellContentWidth(cell, dataCols[i]);
+        if (contentWidth <= colWidths_s[i]) continue;
+
+        int totalWidth = colWidths_s[i];
+        for (int j = i - 1; j >= 0 && totalWidth < contentWidth; j--) {
+            if (claimedBy[j] != -1) break;
+            if (isCellOccupied(dataRow, dataCols[j])) break;
+            HighlightType ht = getHighlightTypeForCell(dataRow, dataCols[j]);
+            if (ht != HIGHLIGHT_NONE) break;
+            claimedBy[j] = i;
+            totalWidth += colWidths_s[j];
+        }
+        effectiveWidth[i] = totalWidth;
+    }
+
+    // Draw pass
+    for (int i = 0; i < numCols; i++) {
+        if (claimedBy[i] != -1) continue;
+
+        int drawWidth = effectiveWidth[i];
+        int availableWidth = screenXEnd - screenXs[i];
+        if (drawWidth > availableWidth) drawWidth = availableWidth;
+
+        int drawScreenCol = screenXs[i];
+        CxSheetCell *cell = sheetModel->getCellPtr(
+            CxSheetCellCoordinate(dataRow, dataCols[i]));
+        if (drawWidth > colWidths_s[i] && cell != NULL) {
+            CxString align = getCellAlignment(cell);
+            if (align == "right") {
+                drawScreenCol = screenXs[i] - (drawWidth - colWidths_s[i]);
+                if (drawScreenCol < screenXStart) {
+                    drawWidth -= (screenXStart - drawScreenCol);
+                    drawScreenCol = screenXStart;
+                }
+            }
+        }
+
+        HighlightType ht = getHighlightTypeForCell(dataRow, dataCols[i]);
+        CxScreen::placeCursor(screenRow, drawScreenCol);
+        CxSheetCellCoordinate coord(dataRow, dataCols[i]);
+        CxString content = formatCellValue(
+            sheetModel->getCellPtr(coord), dataCols[i], drawWidth);
+
+        switch (ht) {
+            case HIGHLIGHT_CURSOR:
+                _defaults->applySelectedCellColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_HUNT:
+                _defaults->applyCellHuntColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_HUNT_RANGE:
+                _defaults->applyCellHuntRangeColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_RANGE:
+                _defaults->applyRangeSelectColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_FORMULA_REF:
+                _defaults->applyFormulaRefColors(screen);
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+                break;
+            case HIGHLIGHT_NONE:
+            default:
+            {
+                CxSheetCell *cellPtr = sheetModel->getCellPtr(coord);
+                CxString fgColorStr = getEffectiveFgColor(dataCols[i], cellPtr);
+                CxString bgColorStr = getEffectiveBgColor(dataCols[i], cellPtr);
+
+                if (fgColorStr.length() > 0 && fgColorStr.index("NONE") < 0) {
+                    CxColor *fgColor = SpreadsheetDefaults::parseColor(fgColorStr, 0);
+                    if (fgColor != NULL) {
+                        screen->setForegroundColor(fgColor);
+                        delete fgColor;
+                    }
+                } else {
+                    _defaults->applyCellColors(screen);
+                }
+
+                if (bgColorStr.length() > 0 && bgColorStr.index("NONE") < 0) {
+                    CxColor *bgColor = SpreadsheetDefaults::parseColor(bgColorStr, 1);
+                    if (bgColor != NULL) {
+                        screen->setBackgroundColor(bgColor);
+                        delete bgColor;
+                    }
+                }
+
+                printf("%s", content.data());
+                _defaults->resetColors(screen);
+            }
+            break;
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetView::dataRowToScreenRow
 //
-// Convert a data row to a screen row, accounting for hidden rows between
-// _scrollRowOffset and the target row.
+// Convert a data row to a screen row, accounting for hidden rows and freeze panes.
 //-------------------------------------------------------------------------------------------------
 int
 SheetView::dataRowToScreenRow(int dataRow)
 {
-    int screenRow = _startRow + _colHeaderHeight;
+    // Frozen rows: mapped from row 0 to _freezeRow-1
+    if (_freezeRow > 0 && dataRow < _freezeRow) {
+        int screenRow = _startRow + _colHeaderHeight;
+        for (int r = 0; r < dataRow; r++) {
+            if (!isRowHidden(r)) screenRow++;
+        }
+        return screenRow;
+    }
+
+    // Scrollable rows: start after frozen rows + divider
+    int screenRow = _startRow + _colHeaderHeight + frozenRowsScreenHeight()
+                    + freezeDividerRowHeight();
     for (int r = _scrollRowOffset; r < dataRow; r++) {
         if (!isRowHidden(r)) screenRow++;
     }
@@ -3322,12 +3917,16 @@ SheetView::dataRowToScreenRow(int dataRow)
 // SheetView::isDataRowVisible
 //
 // Check if a data row is within the currently visible screen area.
-// A row is visible if it's not hidden and falls within the rendered rows.
+// Frozen rows are always visible (unless hidden). Scrollable rows check scroll bounds.
 //-------------------------------------------------------------------------------------------------
 int
 SheetView::isDataRowVisible(int dataRow)
 {
     if (isRowHidden(dataRow)) return 0;
+
+    // Frozen rows are always visible
+    if (_freezeRow > 0 && dataRow < _freezeRow) return 1;
+
     if (dataRow < _scrollRowOffset) return 0;
 
     int visRows = visibleDataRows();

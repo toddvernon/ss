@@ -4669,3 +4669,96 @@ SheetEditor::CMD_ShowAll(CxString commandLine)
     sheetView->updateScreen();
     setMessage("All rows and columns shown");
 }
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_ViewFreeze
+//
+// Freeze rows and/or columns based on the current range selection.
+// The selection must start at A1. The extent of the selection determines what gets frozen:
+//   A1:C1 (one row)    → freeze columns A-C only
+//   A1:A6 (one column) → freeze rows 1-6 only
+//   A1:C6 (multi)      → freeze both rows and columns
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_ViewFreeze(CxString commandLine)
+{
+    (void)commandLine;
+
+    if (!_rangeSelectActive) {
+        setMessage("Select a range starting at A1 first");
+        return;
+    }
+
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+
+    // Range must include A1
+    if (minRow != 0 || minCol != 0) {
+        setMessage("Freeze selection must start at A1");
+        return;
+    }
+
+    // Determine what to freeze based on selection shape
+    int freezeRow = 0;
+    int freezeCol = 0;
+
+    int multiRow = (maxRow > 0);
+    int multiCol = (maxCol > 0);
+
+    if (multiRow && multiCol) {
+        // Multi-row and multi-col: freeze both
+        freezeRow = maxRow + 1;
+        freezeCol = maxCol + 1;
+    } else if (multiRow) {
+        // Single column wide (A1:A6): freeze rows only
+        freezeRow = maxRow + 1;
+    } else if (multiCol) {
+        // Single row tall (A1:C1): freeze columns only
+        freezeCol = maxCol + 1;
+    } else {
+        // Just A1 selected - nothing meaningful to freeze
+        setMessage("Select more than A1 to define a freeze region");
+        return;
+    }
+
+    clearRangeSelection();
+    sheetView->setFreeze(freezeRow, freezeCol);
+    sheetView->updateScreen();
+
+    CxString msg;
+    if (freezeRow > 0 && freezeCol > 0) {
+        msg.printf("Frozen %d row%s and %d column%s",
+                   freezeRow, freezeRow == 1 ? "" : "s",
+                   freezeCol, freezeCol == 1 ? "" : "s");
+    } else if (freezeRow > 0) {
+        msg.printf("Frozen %d row%s", freezeRow, freezeRow == 1 ? "" : "s");
+    } else {
+        msg.printf("Frozen %d column%s", freezeCol, freezeCol == 1 ? "" : "s");
+    }
+    setMessage(msg);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_ViewUnfreeze
+//
+// Remove freeze panes.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_ViewUnfreeze(CxString commandLine)
+{
+    (void)commandLine;
+
+    int fr, fc;
+    sheetView->getFreeze(&fr, &fc);
+
+    if (fr == 0 && fc == 0) {
+        setMessage("No freeze to remove");
+        return;
+    }
+
+    sheetView->setFreeze(0, 0);
+    sheetView->updateScreen();
+    setMessage("Freeze removed");
+}
