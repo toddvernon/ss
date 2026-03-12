@@ -280,37 +280,37 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_FormatColColorBackground,
       NULL },
 
-    //--- modify-hide- (hide rows/columns) ------------------------------------
-    { "modify-hide-row",
+    //--- edit-modify-hide- (hide rows/columns) --------------------------------
+    { "edit-modify-hide-row",
       NULL,
       "Hide current row (or rows in selection)",
       0,
       &SheetEditor::CMD_HideRow,
       NULL },
 
-    { "modify-hide-column",
+    { "edit-modify-hide-column",
       NULL,
       "Hide current column (or columns in selection)",
       0,
       &SheetEditor::CMD_HideColumn,
       NULL },
 
-    //--- modify-show- (show hidden rows/columns) ---------------------------
-    { "modify-show-row",
+    //--- edit-modify-show- (show hidden rows/columns) -----------------------
+    { "edit-modify-show-row",
       NULL,
       "Show hidden rows within selection range",
       0,
       &SheetEditor::CMD_ShowRow,
       NULL },
 
-    { "modify-show-column",
+    { "edit-modify-show-column",
       NULL,
       "Show hidden columns within selection range",
       0,
       &SheetEditor::CMD_ShowColumn,
       NULL },
 
-    { "modify-show-all",
+    { "edit-modify-show-all",
       NULL,
       "Show all hidden rows and columns",
       0,
