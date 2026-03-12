@@ -2490,14 +2490,17 @@ SheetView::updateStatusLine(void)
     }
 
     CxString rightPart;
-    rightPart += "cell(";
+    rightPart += " Ctrl+H: Help ";
+    rightPart += STATUS_FILL;
+    rightPart += STATUS_FILL;
+    rightPart += " cell(";
     rightPart += cellAddress;
     rightPart += ") ";
     rightPart += STATUS_FILL;
     rightPart += STATUS_FILL;
 
-    // Right part display width: "cell(" + address + ") " + 2 fill chars
-    int rightDisplayWidth = 5 + cellAddress.length() + 2 + 2;
+    // Right part display width: "Ctrl+H: Help " + 2 fill + " cell(" + address + ") " + 2 fill
+    int rightDisplayWidth = 14 + 2 + 6 + cellAddress.length() + 2 + 2;
 
     // Calculate fill characters needed between left and right
     int totalWidth = screen->cols();

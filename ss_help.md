@@ -8,14 +8,21 @@ Page Up/Down        Scroll by screen
 Ctrl+Arrow          Jump to edge of data region
 Home                Move to column A
 ESC                 Cancel selection / exit mode
+Ctrl+H              Show this help screen
 
 ## Data Entry
 
-Just start typing   Enter data in current cell (replaces existing)
-Enter               Edit existing cell content
-=                   Start formula (e.g., =A1+B2)
-Enter               Commit entry (when editing)
-ESC                 Cancel entry
+Just start typing to enter data in the current cell:
+
+  <letter>          Text mode (first char is a letter)
+  <digit> or +/-    Number mode
+  $                 Currency mode ($1,234.56)
+  =                 Formula mode (e.g., =A1+B2)
+  @                 Textmap mode (conditional text labels)
+
+Enter (on a cell)   Edit existing cell content
+Enter (while editing)  Commit entry to cell
+ESC (while editing) Cancel entry, cell unchanged
 
 ## Formulas
 
@@ -30,11 +37,21 @@ In formula mode, press ESC to enter cell hunt mode:
   Enter             Insert reference and return to formula
   ESC               Cancel cell hunt
 
+## Textmap Rules
+
+Type @ to enter a textmap rule. Rules map other cell values to text labels:
+
+  @C1>100: Over Budget; C1<50: Under Budget; On Track
+
+  Semicolons separate rules. Each rule: <cellRef><op><value>: <label>
+  Operators: = < > <= >= !=
+  Last entry without ':' is the default label.
+
 ## Formatting Shortcuts
 
-Ctrl+N or Ctrl+4    Cycle number formats (plain → $,.2 → $,.0 → ,.2)
+Ctrl+N or Ctrl+4    Cycle number formats (plain > $,.2 > $,.0 > ,.2)
 Ctrl+5              Toggle percent format
-Ctrl+A              Cycle alignment (left → center → right)
+Ctrl+A              Cycle alignment (left > center > right)
 Ctrl+D              Cycle date formats
 
 ## Clipboard
@@ -42,6 +59,8 @@ Ctrl+D              Cycle date formats
 Ctrl+K              Copy selection
 Ctrl+Y              Paste
 Delete/Backspace    Clear selection
+
+Paste adjusts relative references. Absolute ($) references stay fixed.
 
 ## File Operations
 
@@ -51,7 +70,7 @@ Ctrl+X Ctrl+C       Quit (prompts to save)
 ## ESC Commands
 
 Press ESC to enter command mode, then type command prefix.
-Commands autocomplete as you type. Organized by category:
+Commands autocomplete as you type. TAB cycles matches. Organized by category:
 
 file-
   file-load                   Load spreadsheet from file
@@ -69,7 +88,7 @@ edit-
 insert-
   insert-row-before           Insert row before cursor
   insert-column-before        Insert column before cursor
-  insert-symbol <type>        Insert box drawing symbol
+  insert-symbol <type>        Insert box drawing symbol (see Symbol Types)
 
 delete-
   delete-row                  Delete current row
@@ -116,6 +135,34 @@ quit-
   quit-save                   Save and quit
   quit-nosave                 Quit without saving
 
+## Freeze Panes
+
+Select a range starting at A1, then ESC > view-freeze:
+
+  A1:C1             Freeze columns A-C (horizontal headers)
+  A1:A6             Freeze rows 1-6 (vertical headers)
+  A1:C6             Freeze both rows and columns
+
+Frozen rows/columns stay visible while the rest of the sheet scrolls.
+The status line shows [Frozen] when active. Use view-unfreeze to remove.
+
+## Symbol Types
+
+Used with insert-symbol to fill a cell with box drawing characters:
+
+  horizontal        ─────── (horizontal line)
+  vertical          │ (vertical line)
+  upper-left        ┌ (corner)
+  upper-right       ┐ (corner)
+  lower-left        └ (corner)
+  lower-right       ┘ (corner)
+  left-tee          ├ (tee junction)
+  right-tee         ┤ (tee junction)
+  upper-tee         ┬ (tee junction)
+  lower-tee         ┴ (tee junction)
+
+Symbol fills adapt to cell width automatically.
+
 ## Date Formats
 
 Dates are stored as serial numbers and can be entered as:
@@ -125,6 +172,13 @@ Dates are stored as serial numbers and can be entered as:
   2026/03/10        ISO format with slashes
 
 Use Ctrl+D to cycle between display formats.
+
+## Text Overflow
+
+Long text spills into neighboring empty cells:
+- Left-aligned text overflows rightward
+- Right-aligned text overflows leftward
+- Overflow stops at occupied cells, highlighted cells, and freeze dividers
 
 ## Tips
 
