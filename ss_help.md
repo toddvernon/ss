@@ -87,6 +87,12 @@ modify-col-
   modify-col-number-thousands Toggle column default thousands (,)
   modify-col-color-foreground Set column default text color
   modify-col-color-background Set column default background color
+  modify-col-hide             Hide current column (or columns in selection)
+  modify-col-show             Show hidden columns (requires range selection)
+
+modify-row-
+  modify-row-hide             Hide current row (or rows in selection)
+  modify-row-show             Show hidden rows (requires range selection)
 
 modify-cell-
   modify-cell-align-left      Left-align cell contents
@@ -99,6 +105,8 @@ modify-cell-
   modify-cell-text-wide       Toggle wide text spacing
   modify-cell-color-foreground Set cell text color
   modify-cell-color-background Set cell background color
+
+modify-show-all               Show all hidden rows and columns
 
 quit-
   quit-save                   Save and quit
@@ -119,4 +127,5 @@ Use Ctrl+D to cycle between display formats.
 - Format cycling syncs mixed formats first, then cycles
 - Column defaults cascade to cells without explicit formatting
 - Colors are preserved when editing cell values
+- To unhide rows/columns, select a range spanning the gap, then use show
 - Commands autocomplete as you type
