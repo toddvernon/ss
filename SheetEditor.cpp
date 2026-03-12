@@ -2785,6 +2785,205 @@ SheetEditor::setCellAttributeInt(CxSheetCellCoordinate coord, const char *attrNa
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::getRangeOrCell
+//
+// Get the current range selection, or current cell as a single-cell range.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::getRangeOrCell(CxSheetCellCoordinate *start, CxSheetCellCoordinate *end)
+{
+    if (_rangeSelectActive) {
+        *start = _rangeAnchor;
+        *end = _rangeCurrent;
+    } else {
+        *start = sheetModel->getCurrentPosition();
+        *end = *start;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::clearCellAttributeInColumns
+//
+// Clear a cell-level attribute from all cells in the given column range.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::clearCellAttributeInColumns(int startCol, int endCol, const char *attrName)
+{
+    int maxRow = (int)sheetModel->numberOfRows();
+    for (int col = startCol; col <= endCol; col++) {
+        for (int row = 0; row < maxRow; row++) {
+            CxSheetCellCoordinate coord(row, col);
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell != NULL && cell->hasAppAttribute(attrName)) {
+                cell->removeAppAttribute(attrName);
+            }
+        }
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::applyCellStringAttribute
+//
+// Apply a string attribute to all cells in the current range/cell.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::applyCellStringAttribute(const char *attrName, const char *value, const char *message)
+{
+    CxSheetCellCoordinate start, end;
+    getRangeOrCell(&start, &end);
+
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
+
+    int cellCount = 0;
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+            setCellAttribute(coord, attrName, value);
+            cellCount++;
+        }
+    }
+
+    clearRangeSelection();
+    sheetView->updateScreen();
+
+    if (cellCount == 1) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(1 cell %s)", message);
+        setMessage(buf);
+    } else {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, message);
+        setMessage(buf);
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::toggleCellBoolAttribute
+//
+// Toggle a boolean attribute on all cells in the current range/cell.
+// First cell determines the new state; all cells in range get the same state.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::toggleCellBoolAttribute(const char *attrName, const char *label)
+{
+    CxSheetCellCoordinate start, end;
+    getRangeOrCell(&start, &end);
+
+    int minRow, maxRow, minCol, maxCol;
+    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
+
+    int cellCount = 0;
+    int newState = -1;
+
+    for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+            CxSheetCellCoordinate coord;
+            coord.setRow(row);
+            coord.setCol(col);
+
+            CxSheetCell *cell = sheetModel->getCellPtr(coord);
+            if (cell == NULL) {
+                CxSheetCell newCell;
+                newCell.setAppAttribute(attrName, true);
+                sheetModel->setCell(coord, newCell);
+                if (newState < 0) newState = 1;
+            } else {
+                bool current = cell->getAppAttributeBool(attrName, false);
+                if (newState < 0) newState = current ? 0 : 1;
+                cell->setAppAttribute(attrName, newState == 1);
+            }
+            cellCount++;
+        }
+    }
+
+    clearRangeSelection();
+    sheetView->updateScreen();
+
+    char buf[64];
+    const char *state = (newState == 1) ? "on" : "off";
+    if (cellCount == 1) {
+        snprintf(buf, sizeof(buf), "(1 cell %s %s)", label, state);
+    } else {
+        snprintf(buf, sizeof(buf), "(%d cells %s %s)", cellCount, label, state);
+    }
+    setMessage(buf);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::setColumnAlignment
+//
+// Set alignment as column default for the current column or selected columns.
+// Clears cell-level align attributes.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::setColumnAlignment(int alignValue, const char *message)
+{
+    int startCol, endCol;
+    getColumnRange(&startCol, &endCol);
+
+    for (int col = startCol; col <= endCol; col++) {
+        sheetView->setColAlign(col, alignValue);
+    }
+
+    clearCellAttributeInColumns(startCol, endCol, "align");
+    clearRangeSelection();
+    sheetView->updateScreen();
+    setMessage(message);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::toggleColumnBoolFormat
+//
+// Toggle a boolean column format (currency, percent, thousands) for the current column
+// or selected columns. Clears cell-level attributes in affected columns.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::toggleColumnBoolFormat(const char *attrName, const char *label)
+{
+    int startCol, endCol;
+    getColumnRange(&startCol, &endCol);
+
+    // Get current state from first column to determine toggle direction
+    int currentVal = 0;
+    if (strcmp(attrName, "currency") == 0) {
+        currentVal = sheetView->getColCurrency(startCol);
+    } else if (strcmp(attrName, "percent") == 0) {
+        currentVal = sheetView->getColPercent(startCol);
+    } else if (strcmp(attrName, "thousands") == 0) {
+        currentVal = sheetView->getColThousands(startCol);
+    }
+    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
+
+    // Apply to all columns in range
+    for (int col = startCol; col <= endCol; col++) {
+        if (strcmp(attrName, "currency") == 0) {
+            sheetView->setColCurrency(col, newVal);
+        } else if (strcmp(attrName, "percent") == 0) {
+            sheetView->setColPercent(col, newVal);
+        } else if (strcmp(attrName, "thousands") == 0) {
+            sheetView->setColThousands(col, newVal);
+        }
+    }
+
+    clearCellAttributeInColumns(startCol, endCol, attrName);
+    clearRangeSelection();
+    sheetView->updateScreen();
+
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Column %s: %s", label, newVal == 1 ? "on" : "off");
+    setMessage(buf);
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::copyRangeToClipboard
 //
 // Copy cells from start to end coordinates into the clipboard. Stores each cell with its
@@ -3155,46 +3354,8 @@ SheetEditor::CMD_FillRight(CxString commandLine)
 void
 SheetEditor::CMD_FormatCellAlignLeft(CxString commandLine)
 {
-    (void)commandLine;  // unused
-
-    CxSheetCellCoordinate start, end;
-
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
-    int minRow, maxRow, minCol, maxCol;
-    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
-
-    int cellCount = 0;
-
-    // Apply alignment
-    for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-            CxSheetCellCoordinate coord;
-            coord.setRow(row);
-            coord.setCol(col);
-            setCellAttribute(coord, "align", "left");
-            cellCount++;
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-
-    if (cellCount == 1) {
-        setMessage("(1 cell left-aligned)");
-    } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells left-aligned)", cellCount);
-        setMessage(buf);
-    }
+    (void)commandLine;
+    applyCellStringAttribute("align", "left", "left-aligned");
 }
 
 
@@ -3206,46 +3367,8 @@ SheetEditor::CMD_FormatCellAlignLeft(CxString commandLine)
 void
 SheetEditor::CMD_FormatCellAlignCenter(CxString commandLine)
 {
-    (void)commandLine;  // unused
-
-    CxSheetCellCoordinate start, end;
-
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
-    int minRow, maxRow, minCol, maxCol;
-    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
-
-    int cellCount = 0;
-
-    // Apply alignment
-    for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-            CxSheetCellCoordinate coord;
-            coord.setRow(row);
-            coord.setCol(col);
-            setCellAttribute(coord, "align", "center");
-            cellCount++;
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-
-    if (cellCount == 1) {
-        setMessage("(1 cell centered)");
-    } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells centered)", cellCount);
-        setMessage(buf);
-    }
+    (void)commandLine;
+    applyCellStringAttribute("align", "center", "centered");
 }
 
 
@@ -3257,46 +3380,8 @@ SheetEditor::CMD_FormatCellAlignCenter(CxString commandLine)
 void
 SheetEditor::CMD_FormatCellAlignRight(CxString commandLine)
 {
-    (void)commandLine;  // unused
-
-    CxSheetCellCoordinate start, end;
-
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
-    int minRow, maxRow, minCol, maxCol;
-    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
-
-    int cellCount = 0;
-
-    // Apply alignment
-    for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-            CxSheetCellCoordinate coord;
-            coord.setRow(row);
-            coord.setCol(col);
-            setCellAttribute(coord, "align", "right");
-            cellCount++;
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-
-    if (cellCount == 1) {
-        setMessage("(1 cell right-aligned)");
-    } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells right-aligned)", cellCount);
-        setMessage(buf);
-    }
+    (void)commandLine;
+    applyCellStringAttribute("align", "right", "right-aligned");
 }
 
 
@@ -3724,26 +3809,17 @@ SheetEditor::cycleDateFormat(void)
 void
 SheetEditor::CMD_FormatCellNumberCurrency(CxString commandLine)
 {
-    (void)commandLine;  // unused
+    (void)commandLine;
 
     CxSheetCellCoordinate start, end;
+    getRangeOrCell(&start, &end);
 
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
     int minRow, maxRow, minCol, maxCol;
     normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
-    int newState = -1;  // -1 means not determined yet
+    int newState = -1;
 
-    // Toggle currency attribute
     for (int row = minRow; row <= maxRow; row++) {
         for (int col = minCol; col <= maxCol; col++) {
             CxSheetCellCoordinate coord;
@@ -3772,19 +3848,16 @@ SheetEditor::CMD_FormatCellNumberCurrency(CxString commandLine)
     }
 
     clearRangeSelection();
-
     sheetView->updateScreen();
 
-    const char *action = (newState == 1) ? "currency on" : "currency off";
+    char buf[64];
+    const char *state = (newState == 1) ? "on" : "off";
     if (cellCount == 1) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
-        setMessage(buf);
+        snprintf(buf, sizeof(buf), "(1 cell currency %s)", state);
     } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
-        setMessage(buf);
+        snprintf(buf, sizeof(buf), "(%d cells currency %s)", cellCount, state);
     }
+    setMessage(buf);
 }
 
 
@@ -3810,22 +3883,12 @@ SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
     }
 
     CxSheetCellCoordinate start, end;
+    getRangeOrCell(&start, &end);
 
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
     int minRow, maxRow, minCol, maxCol;
     normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
 
     int cellCount = 0;
-
-    // Set decimal places
     for (int row = minRow; row <= maxRow; row++) {
         for (int col = minCol; col <= maxCol; col++) {
             CxSheetCellCoordinate coord;
@@ -3837,18 +3900,15 @@ SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
     }
 
     clearRangeSelection();
-
     sheetView->updateScreen();
 
+    char buf[64];
     if (cellCount == 1) {
-        char buf[64];
         snprintf(buf, sizeof(buf), "(1 cell set to %d decimals)", places);
-        setMessage(buf);
     } else {
-        char buf[64];
         snprintf(buf, sizeof(buf), "(%d cells set to %d decimals)", cellCount, places);
-        setMessage(buf);
     }
+    setMessage(buf);
 }
 
 
@@ -3860,61 +3920,8 @@ SheetEditor::CMD_FormatCellNumberDecimal(CxString commandLine)
 void
 SheetEditor::CMD_FormatCellNumberPercent(CxString commandLine)
 {
-    (void)commandLine;  // unused
-
-    CxSheetCellCoordinate start, end;
-
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
-    int minRow, maxRow, minCol, maxCol;
-    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
-
-    int cellCount = 0;
-    int newState = -1;
-
-    // Toggle percent attribute
-    for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-            CxSheetCellCoordinate coord;
-            coord.setRow(row);
-            coord.setCol(col);
-
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("percent", true);
-                sheetModel->setCell(coord, newCell);
-                if (newState < 0) newState = 1;
-            } else {
-                bool current = cell->getAppAttributeBool("percent", false);
-                if (newState < 0) newState = current ? 0 : 1;
-                cell->setAppAttribute("percent", newState == 1);
-            }
-            cellCount++;
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-
-    const char *action = (newState == 1) ? "percent on" : "percent off";
-    if (cellCount == 1) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
-        setMessage(buf);
-    } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
-        setMessage(buf);
-    }
+    (void)commandLine;
+    toggleCellBoolAttribute("percent", "percent");
 }
 
 
@@ -3926,61 +3933,8 @@ SheetEditor::CMD_FormatCellNumberPercent(CxString commandLine)
 void
 SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
 {
-    (void)commandLine;  // unused
-
-    CxSheetCellCoordinate start, end;
-
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
-    int minRow, maxRow, minCol, maxCol;
-    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
-
-    int cellCount = 0;
-    int newState = -1;
-
-    // Toggle thousands attribute
-    for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-            CxSheetCellCoordinate coord;
-            coord.setRow(row);
-            coord.setCol(col);
-
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("thousands", true);
-                sheetModel->setCell(coord, newCell);
-                if (newState < 0) newState = 1;
-            } else {
-                bool current = cell->getAppAttributeBool("thousands", false);
-                if (newState < 0) newState = current ? 0 : 1;
-                cell->setAppAttribute("thousands", newState == 1);
-            }
-            cellCount++;
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-
-    const char *action = (newState == 1) ? "thousands on" : "thousands off";
-    if (cellCount == 1) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
-        setMessage(buf);
-    } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
-        setMessage(buf);
-    }
+    (void)commandLine;
+    toggleCellBoolAttribute("thousands", "thousands");
 }
 
 
@@ -3993,61 +3947,8 @@ SheetEditor::CMD_FormatCellNumberThousands(CxString commandLine)
 void
 SheetEditor::CMD_FormatCellTextWide(CxString commandLine)
 {
-    (void)commandLine;  // unused
-
-    CxSheetCellCoordinate start, end;
-
-    if (_rangeSelectActive) {
-        start = _rangeAnchor;
-        end = _rangeCurrent;
-    } else {
-        start = sheetModel->getCurrentPosition();
-        end = start;
-    }
-
-    // Normalize range
-    int minRow, maxRow, minCol, maxCol;
-    normalizeRange(start, end, &minRow, &maxRow, &minCol, &maxCol);
-
-    int cellCount = 0;
-    int newState = -1;
-
-    // Toggle wideText attribute
-    for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-            CxSheetCellCoordinate coord;
-            coord.setRow(row);
-            coord.setCol(col);
-
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell == NULL) {
-                CxSheetCell newCell;
-                newCell.setAppAttribute("wideText", true);
-                sheetModel->setCell(coord, newCell);
-                if (newState < 0) newState = 1;
-            } else {
-                bool current = cell->getAppAttributeBool("wideText", false);
-                if (newState < 0) newState = current ? 0 : 1;
-                cell->setAppAttribute("wideText", newState == 1);
-            }
-            cellCount++;
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-
-    const char *action = (newState == 1) ? "wide text on" : "wide text off";
-    if (cellCount == 1) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(1 cell %s)", action);
-        setMessage(buf);
-    } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%d cells %s)", cellCount, action);
-        setMessage(buf);
-    }
+    (void)commandLine;
+    toggleCellBoolAttribute("wideText", "wide text");
 }
 
 
@@ -4156,30 +4057,7 @@ void
 SheetEditor::CMD_FormatColAlignLeft(CxString commandLine)
 {
     (void)commandLine;
-
-    int startCol, endCol;
-    getColumnRange(&startCol, &endCol);
-
-    for (int col = startCol; col <= endCol; col++) {
-        sheetView->setColAlign(col, 1);  // 1 = left
-    }
-
-    // Clear cell-level align attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("align")) {
-                cell->removeAppAttribute("align");
-            }
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-    setMessage("Column align: left");
+    setColumnAlignment(1, "Column align: left");
 }
 
 
@@ -4192,30 +4070,7 @@ void
 SheetEditor::CMD_FormatColAlignCenter(CxString commandLine)
 {
     (void)commandLine;
-
-    int startCol, endCol;
-    getColumnRange(&startCol, &endCol);
-
-    for (int col = startCol; col <= endCol; col++) {
-        sheetView->setColAlign(col, 2);  // 2 = center
-    }
-
-    // Clear cell-level align attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("align")) {
-                cell->removeAppAttribute("align");
-            }
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-    setMessage("Column align: center");
+    setColumnAlignment(2, "Column align: center");
 }
 
 
@@ -4228,30 +4083,7 @@ void
 SheetEditor::CMD_FormatColAlignRight(CxString commandLine)
 {
     (void)commandLine;
-
-    int startCol, endCol;
-    getColumnRange(&startCol, &endCol);
-
-    for (int col = startCol; col <= endCol; col++) {
-        sheetView->setColAlign(col, 3);  // 3 = right
-    }
-
-    // Clear cell-level align attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("align")) {
-                cell->removeAppAttribute("align");
-            }
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-    setMessage("Column align: right");
+    setColumnAlignment(3, "Column align: right");
 }
 
 
@@ -4264,34 +4096,7 @@ void
 SheetEditor::CMD_FormatColNumberCurrency(CxString commandLine)
 {
     (void)commandLine;
-
-    int startCol, endCol;
-    getColumnRange(&startCol, &endCol);
-
-    // Toggle based on first column's current state
-    int currentVal = sheetView->getColCurrency(startCol);
-    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
-
-    for (int col = startCol; col <= endCol; col++) {
-        sheetView->setColCurrency(col, newVal);
-    }
-
-    // Clear cell-level currency attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("currency")) {
-                cell->removeAppAttribute("currency");
-            }
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-    setMessage(newVal == 1 ? "Column currency: on" : "Column currency: off");
+    toggleColumnBoolFormat("currency", "currency");
 }
 
 
@@ -4314,20 +4119,8 @@ SheetEditor::CMD_FormatColNumberDecimal(CxString commandLine)
         sheetView->setColDecimalPlaces(col, places);
     }
 
-    // Clear cell-level decimalPlaces attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("decimalPlaces")) {
-                cell->removeAppAttribute("decimalPlaces");
-            }
-        }
-    }
-
+    clearCellAttributeInColumns(startCol, endCol, "decimalPlaces");
     clearRangeSelection();
-
     sheetView->updateScreen();
 
     char msg[64];
@@ -4345,34 +4138,7 @@ void
 SheetEditor::CMD_FormatColNumberPercent(CxString commandLine)
 {
     (void)commandLine;
-
-    int startCol, endCol;
-    getColumnRange(&startCol, &endCol);
-
-    // Toggle based on first column's current state
-    int currentVal = sheetView->getColPercent(startCol);
-    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
-
-    for (int col = startCol; col <= endCol; col++) {
-        sheetView->setColPercent(col, newVal);
-    }
-
-    // Clear cell-level percent attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("percent")) {
-                cell->removeAppAttribute("percent");
-            }
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-    setMessage(newVal == 1 ? "Column percent: on" : "Column percent: off");
+    toggleColumnBoolFormat("percent", "percent");
 }
 
 
@@ -4385,34 +4151,7 @@ void
 SheetEditor::CMD_FormatColNumberThousands(CxString commandLine)
 {
     (void)commandLine;
-
-    int startCol, endCol;
-    getColumnRange(&startCol, &endCol);
-
-    // Toggle based on first column's current state
-    int currentVal = sheetView->getColThousands(startCol);
-    int newVal = (currentVal == 1) ? 2 : 1;  // toggle: 1=on, 2=off
-
-    for (int col = startCol; col <= endCol; col++) {
-        sheetView->setColThousands(col, newVal);
-    }
-
-    // Clear cell-level thousands attribute from all cells in affected columns
-    int maxRow = (int)sheetModel->numberOfRows();
-    for (int col = startCol; col <= endCol; col++) {
-        for (int row = 0; row < maxRow; row++) {
-            CxSheetCellCoordinate coord(row, col);
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL && cell->hasAppAttribute("thousands")) {
-                cell->removeAppAttribute("thousands");
-            }
-        }
-    }
-
-    clearRangeSelection();
-
-    sheetView->updateScreen();
-    setMessage(newVal == 1 ? "Column thousands: on" : "Column thousands: off");
+    toggleColumnBoolFormat("thousands", "thousands");
 }
 
 

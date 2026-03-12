@@ -171,19 +171,18 @@ Display: `|$     1,234.56|`
 
 ---
 
-## Phase 9: Row/Column Operations (Partial)
+## Phase 9: Row/Column Operations ✓
 
-**Implemented:**
-- `insert-row` - insert row above cursor ✓
+**Commands:**
+- `insert-row-before` - insert row above cursor ✓
 - `delete-row` - delete current row ✓
-- `insert-column` - insert column before cursor ✓
+- `insert-column-before` - insert column before cursor ✓
 - `delete-column` - delete current column ✓
-
-**Not implemented:**
-- `modify-hide-row` - hide selected row(s)
-- `modify-show-row` - unhide
-- `modify-hide-column` - hide selected column(s)
-- `modify-show-column` - unhide
+- `modify-row-hide` - hide current row (or rows in selection) ✓
+- `modify-row-show` - show hidden rows (requires range selection) ✓
+- `modify-col-hide` - hide current column (or columns in selection) ✓
+- `modify-col-show` - show hidden columns (requires range selection) ✓
+- `modify-show-all` - show all hidden rows and columns ✓
 
 ---
 
@@ -317,7 +316,7 @@ $1,234.56       1234.56   currency=true, thousands=true
 | 6 | Number Formatting | ✓ Complete |
 | 7 | Alignment | ✓ Complete |
 | 8 | Colors | ✓ Complete |
-| 9 | Row/Column Operations | Partial (hide/show remaining) |
+| 9 | Row/Column Operations | ✓ Complete |
 | 10 | Post-Commit Parsing | ✓ Complete |
 | 11 | Help System | ✓ Complete |
 
@@ -326,5 +325,5 @@ $1,234.56       1234.56   currency=true, thousands=true
 ## Remaining Work
 
 1. **Freeze Panes (Phase 5)** - lock rows/columns while scrolling
-2. **Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations
+2. ~~**Hide/Show Rows/Columns (Phase 9)** - remaining row/column operations~~ ✓ Complete
 3. ~~**Dirty Tracking** - track unsaved changes to block exit without save prompt~~ ✓ Complete

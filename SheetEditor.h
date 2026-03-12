@@ -284,6 +284,7 @@ class SheetEditor {
     // range helpers
     void normalizeRange(CxSheetCellCoordinate start, CxSheetCellCoordinate end,
                         int *minRow, int *maxRow, int *minCol, int *maxCol);
+    void getRangeOrCell(CxSheetCellCoordinate *start, CxSheetCellCoordinate *end);
     void getColumnRange(int *startCol, int *endCol);
     void clearRangeSelection(void);
 
@@ -291,6 +292,13 @@ class SheetEditor {
     void setCellAttribute(CxSheetCellCoordinate coord, const char *attrName, const char *value);
     void setCellAttributeBool(CxSheetCellCoordinate coord, const char *attrName, int value);
     void setCellAttributeInt(CxSheetCellCoordinate coord, const char *attrName, int value);
+
+    // refactored formatting helpers
+    void applyCellStringAttribute(const char *attrName, const char *value, const char *message);
+    void toggleCellBoolAttribute(const char *attrName, const char *label);
+    void setColumnAlignment(int alignValue, const char *message);
+    void toggleColumnBoolFormat(const char *attrName, const char *label);
+    void clearCellAttributeInColumns(int startCol, int endCol, const char *attrName);
 
     // resize callback - coordinates all redrawing
     void screenResizeCallback(void);
