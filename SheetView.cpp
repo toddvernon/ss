@@ -2489,18 +2489,29 @@ SheetView::updateStatusLine(void)
         cellAddress = pos.toAddress();
     }
 
+    // Build cell part with fixed-width padding so right-side items don't jump
+    // "cell(AA100:ZZ999) " = max ~20 chars; pad to 20
+    CxString cellPart;
+    cellPart += "cell(";
+    cellPart += cellAddress;
+    cellPart += ")";
+    int cellPartDisplayWidth = cellPart.length();
+    static const int CELL_PART_WIDTH = 20;
+    while (cellPartDisplayWidth < CELL_PART_WIDTH) {
+        cellPart += STATUS_FILL;
+        cellPartDisplayWidth++;
+    }
+
     CxString rightPart;
     rightPart += " Ctrl+H: Help ";
     rightPart += STATUS_FILL;
     rightPart += STATUS_FILL;
-    rightPart += " cell(";
-    rightPart += cellAddress;
-    rightPart += ") ";
+    rightPart += cellPart;
     rightPart += STATUS_FILL;
     rightPart += STATUS_FILL;
 
-    // Right part display width: "Ctrl+H: Help " + 2 fill + " cell(" + address + ") " + 2 fill
-    int rightDisplayWidth = 14 + 2 + 6 + cellAddress.length() + 2 + 2;
+    // Right part display width: " Ctrl+H: Help " + 2 fill + CELL_PART_WIDTH + 2 fill
+    int rightDisplayWidth = 14 + 2 + CELL_PART_WIDTH + 2;
 
     // Calculate fill characters needed between left and right
     int totalWidth = screen->cols();
