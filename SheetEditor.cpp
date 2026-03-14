@@ -61,6 +61,12 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _colorPickerScrollOffset(0)
 , _colorPickerIsForeground(0)
 , _colorPickerIsColumn(0)
+#ifdef SS_CLAUDE_ENABLED
+, _claudeHandler(NULL)
+, _claudeView(NULL)
+, _claudeViewVisible(0)
+, _claudeInputCursorPos(0)
+#endif
 {
     //---------------------------------------------------------------------------------------------
     // Block SIGWINCH during construction to prevent callbacks on partially-constructed objects.
@@ -124,6 +130,29 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     messageLineView = new MessageLineView(screen, spreadsheetDefaults, sheetEndRow + 2);
     helpView = new HelpView(spreadsheetDefaults, screen);
 
+#ifdef SS_CLAUDE_ENABLED
+    //---------------------------------------------------------------------------------------------
+    // Create Claude handler and view (not visible until user enters claude command)
+    //---------------------------------------------------------------------------------------------
+    _claudeHandler = new ClaudeHandler(this);
+
+    // Configure API key: .ssrc takes priority, then env var
+    CxString configApiKey = spreadsheetDefaults->claudeApiKey();
+    if (configApiKey.length() > 0) {
+        _claudeHandler->setApiKey(configApiKey);
+    } else {
+        const char *envKey = getenv("ANTHROPIC_API_KEY");
+        if (envKey != NULL) {
+            _claudeHandler->setApiKey(CxString(envKey));
+        }
+    }
+
+    // ClaudeView created but not visible yet - positioned below sheet
+    int claudeStartRow = sheetEndRow + 1;
+    int claudeEndRow = claudeStartRow + 7;  // 8 rows total
+    _claudeView = new ClaudeView(screen, spreadsheetDefaults, claudeStartRow, claudeEndRow);
+#endif
+
     //---------------------------------------------------------------------------------------------
     // Load column widths from app data (if file was loaded)
     //---------------------------------------------------------------------------------------------
@@ -159,6 +188,13 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     // This is critical - the callback must not fire on partially-constructed objects.
     //---------------------------------------------------------------------------------------------
     screen->addScreenSizeCallback(CxDeferCall(this, &SheetEditor::screenResizeCallback));
+
+#ifdef SS_CLAUDE_ENABLED
+    //---------------------------------------------------------------------------------------------
+    // Register idle callback for polling Claude API responses (~100ms intervals)
+    //---------------------------------------------------------------------------------------------
+    keyboard->addIdleCallback(CxDeferCall(this, &SheetEditor::claudeIdleCallback));
+#endif
 
     //---------------------------------------------------------------------------------------------
     // UNBLOCK SIGWINCH now that construction is complete
@@ -228,6 +264,14 @@ SheetEditor::~SheetEditor(void)
     if (spreadsheetDefaults != NULL) {
         delete spreadsheetDefaults;
     }
+#ifdef SS_CLAUDE_ENABLED
+    if (_claudeHandler != NULL) {
+        delete _claudeHandler;
+    }
+    if (_claudeView != NULL) {
+        delete _claudeView;
+    }
+#endif
 }
 
 
@@ -274,6 +318,12 @@ SheetEditor::run(void)
             case HELPVIEW:
                 focusHelpView(keyAction);
                 break;
+
+#ifdef SS_CLAUDE_ENABLED
+            case CLAUDEVIEW:
+                focusClaudeView(keyAction);
+                break;
+#endif
         }
 
         // Single flush per action (consolidated from individual view updates)
@@ -1080,9 +1130,11 @@ SheetEditor::executeCurrentCommand(void)
     // Return to edit mode unless:
     // - quit was requested
     // - handler switched TO argument mode (e.g., quit-save prompting for filename)
+    // - handler changed programMode (e.g., CMD_Claude sets CLAUDEVIEW)
     int handlerRequestedArgInput = (stateBefore != CMD_INPUT_ARGUMENT &&
                                     _cmdInputState == CMD_INPUT_ARGUMENT);
-    if (!_quitRequested && !handlerRequestedArgInput) {
+    int handlerChangedMode = (programMode != COMMANDLINE);
+    if (!_quitRequested && !handlerRequestedArgInput && !handlerChangedMode) {
         exitCommandLineMode();
     }
 }
@@ -1526,9 +1578,28 @@ SheetEditor::screenResizeCallback(void)
     int totalRows = screen->rows();
     int sheetEndRow = totalRows - 3;
 
-    sheetView->recalcForResize(0, sheetEndRow);
+#ifdef SS_CLAUDE_ENABLED
+    if (_claudeViewVisible) {
+        // Claude view takes 8 rows from the bottom, above command/message lines
+        int claudeHeight = _claudeView->getHeight();
+        sheetEndRow = totalRows - 3 - claudeHeight;
+
+        int claudeStartRow = sheetEndRow + 1;
+        int claudeEndRow = claudeStartRow + claudeHeight - 1;
+        _claudeView->recalcForResize(claudeStartRow, claudeEndRow);
+
+        commandLineView->recalcForResize(claudeEndRow + 1);
+        messageLineView->recalcForResize(claudeEndRow + 2);
+    } else {
+        commandLineView->recalcForResize(sheetEndRow + 1);
+        messageLineView->recalcForResize(sheetEndRow + 2);
+    }
+#else
     commandLineView->recalcForResize(sheetEndRow + 1);
     messageLineView->recalcForResize(sheetEndRow + 2);
+#endif
+
+    sheetView->recalcForResize(0, sheetEndRow);
 
     //---------------------------------------------------------------------------------------------
     // PHASE 2: Redraw everything in correct z-order
@@ -1536,10 +1607,36 @@ SheetEditor::screenResizeCallback(void)
     CxScreen::clearScreen();
 
     sheetView->updateScreen();
-    commandLineView->updateScreen();
+
+#ifdef SS_CLAUDE_ENABLED
+    if (_claudeViewVisible) {
+        _claudeView->updateScreen();
+    }
+#endif
+
+    // Draw command line: use cell info display when not in command mode
+    // (commandLineView->updateScreen() would draw stale command text in CLAUDEVIEW/EDIT modes)
+#ifdef SS_CLAUDE_ENABLED
+    if (programMode == CLAUDEVIEW || programMode == EDIT) {
+        updateCommandLineDisplay();
+    } else {
+        commandLineView->updateScreen();
+    }
+#else
+    if (programMode == EDIT) {
+        updateCommandLineDisplay();
+    } else {
+        commandLineView->updateScreen();
+    }
+#endif
     messageLineView->updateScreen();
 
     // Place cursor based on current mode
+#ifdef SS_CLAUDE_ENABLED
+    if (programMode == CLAUDEVIEW) {
+        _claudeView->placeCursor();
+    } else
+#endif
     if (programMode == EDIT) {
         sheetView->placeCursor();
     } else {
@@ -4762,3 +4859,277 @@ SheetEditor::CMD_ViewUnfreeze(CxString commandLine)
     sheetView->updateScreen();
     setMessage("Freeze removed");
 }
+
+
+#ifdef SS_CLAUDE_ENABLED
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Claude
+//
+// Command handler for the "claude" ESC command. Opens Claude AI chat mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Claude(CxString commandLine)
+{
+    (void)commandLine;
+    enterClaudeMode();
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::enterClaudeMode
+//
+// Show the Claude chat area, shrink sheet view, and switch to CLAUDEVIEW mode.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::enterClaudeMode(void)
+{
+    _claudeViewVisible = 1;
+
+    // Reset command line state so it shows cell info instead of stale "command> claude"
+    _cmdInputState = CMD_INPUT_IDLE;
+
+    // Recalculate all view positions
+    int totalRows = screen->rows();
+    int claudeHeight = _claudeView->getHeight();
+    int sheetEndRow = totalRows - 3 - claudeHeight;
+
+    int claudeStartRow = sheetEndRow + 1;
+    int claudeEndRow = claudeStartRow + claudeHeight - 1;
+
+    // Phase 1: recalc all
+    sheetView->recalcForResize(0, sheetEndRow);
+    _claudeView->recalcForResize(claudeStartRow, claudeEndRow);
+    commandLineView->recalcForResize(claudeEndRow + 1);
+    messageLineView->recalcForResize(claudeEndRow + 2);
+
+    // Phase 2: redraw all
+    CxScreen::clearScreen();
+    sheetView->updateScreen();
+
+    _claudeView->setDisplayLines(_claudeHandler->getDisplayLines(),
+                                 _claudeHandler->getDisplayLineCount());
+    _claudeView->setInputText(_claudeInputBuffer.toBytes());
+    _claudeView->setInputCursorPos(_claudeInputCursorPos);
+    _claudeView->scrollToBottom();
+    _claudeView->updateScreen();
+
+    // Draw cell info (not commandLineView->updateScreen() which has stale command text)
+    updateCommandLineDisplay();
+    messageLineView->updateScreen();
+
+    programMode = CLAUDEVIEW;
+    _claudeView->placeCursor();
+    fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::exitClaudeMode
+//
+// Hide Claude chat, expand sheet view back, return to EDIT mode.
+// Conversation history is preserved in ClaudeHandler.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::exitClaudeMode(void)
+{
+    _claudeViewVisible = 0;
+
+    // Recalculate without Claude view
+    int totalRows = screen->rows();
+    int sheetEndRow = totalRows - 3;
+
+    sheetView->recalcForResize(0, sheetEndRow);
+    commandLineView->recalcForResize(sheetEndRow + 1);
+    messageLineView->recalcForResize(sheetEndRow + 2);
+
+    // Redraw all
+    CxScreen::clearScreen();
+    sheetView->updateScreen();
+    commandLineView->updateScreen();
+    messageLineView->updateScreen();
+
+    programMode = EDIT;
+    resetPrompt();
+    sheetView->placeCursor();
+    fflush(stdout);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::focusClaudeView
+//
+// Handle keyboard input when in CLAUDEVIEW mode.
+// ENTER sends message, ESC exits, arrows scroll, printable chars edit input.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::focusClaudeView(CxKeyAction keyAction)
+{
+    int action = keyAction.actionType();
+
+    switch (action) {
+        //-------------------------------------------------------------------------------------
+        // ESC - exit Claude view (history preserved)
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::COMMAND:
+        {
+            exitClaudeMode();
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // ENTER - send message
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::NEWLINE:
+        {
+            CxString inputText = _claudeInputBuffer.toBytes();
+            if (inputText.length() > 0) {
+                // Handle /clear command
+                if (inputText == "/clear") {
+                    _claudeHandler->clearHistory();
+                    _claudeHandler->clearDisplayLines();
+                    _claudeInputBuffer = CxUTFString();
+                    _claudeInputCursorPos = 0;
+
+                    _claudeView->setDisplayLines(_claudeHandler->getDisplayLines(),
+                                                 _claudeHandler->getDisplayLineCount());
+                    _claudeView->setInputText("");
+                    _claudeView->setInputCursorPos(0);
+                    _claudeView->scrollToBottom();
+                    _claudeView->updateScreen();
+                    _claudeView->placeCursor();
+                } else {
+                    _claudeHandler->sendMessage(inputText);
+                    _claudeInputBuffer = CxUTFString();
+                    _claudeInputCursorPos = 0;
+
+                    // Update view
+                    _claudeView->setDisplayLines(_claudeHandler->getDisplayLines(),
+                                                 _claudeHandler->getDisplayLineCount());
+                    _claudeView->setInputText("");
+                    _claudeView->setInputCursorPos(0);
+                    _claudeView->scrollToBottom();
+                    _claudeView->updateScreen();
+                    _claudeView->placeCursor();
+                }
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Arrow keys - scroll chat or move cursor in input
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::CURSOR:
+        {
+            CxString tag = keyAction.tag();
+            if (tag == "<arrow-up>") {
+                _claudeView->scrollUp();
+                _claudeView->updateScreen();
+                _claudeView->placeCursor();
+            } else if (tag == "<arrow-down>") {
+                _claudeView->scrollDown();
+                _claudeView->updateScreen();
+                _claudeView->placeCursor();
+            } else if (tag == "<arrow-left>") {
+                if (_claudeInputCursorPos > 0) {
+                    _claudeInputCursorPos--;
+                    _claudeView->setInputCursorPos(_claudeInputCursorPos);
+                    _claudeView->placeCursor();
+                }
+            } else if (tag == "<arrow-right>") {
+                if (_claudeInputCursorPos < _claudeInputBuffer.charCount()) {
+                    _claudeInputCursorPos++;
+                    _claudeView->setInputCursorPos(_claudeInputCursorPos);
+                    _claudeView->placeCursor();
+                }
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Backspace
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::BACKSPACE:
+        {
+            if (_claudeInputCursorPos > 0 && _claudeInputBuffer.charCount() > 0) {
+                _claudeInputBuffer.remove(_claudeInputCursorPos - 1, 1);
+                _claudeInputCursorPos--;
+                _claudeView->setInputText(_claudeInputBuffer.toBytes());
+                _claudeView->setInputCursorPos(_claudeInputCursorPos);
+                _claudeView->updateScreen();
+                _claudeView->placeCursor();
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Printable characters - insert into input buffer
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::LOWERCASE_ALPHA:
+        case CxKeyAction::UPPERCASE_ALPHA:
+        case CxKeyAction::NUMBER:
+        case CxKeyAction::SYMBOL:
+        {
+            CxString tag = keyAction.tag();
+            if (tag.length() > 0) {
+                CxUTFCharacter ch = CxUTFCharacter::fromASCII(tag.data()[0]);
+                _claudeInputBuffer.insert(_claudeInputCursorPos, ch);
+                _claudeInputCursorPos++;
+                _claudeView->setInputText(_claudeInputBuffer.toBytes());
+                _claudeView->setInputCursorPos(_claudeInputCursorPos);
+                _claudeView->updateScreen();
+                _claudeView->placeCursor();
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Space (TAB action type in some cases, but space is usually SYMBOL)
+        //-------------------------------------------------------------------------------------
+
+        default:
+            break;
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::claudeIdleCallback
+//
+// Called ~100ms during keyboard idle. Polls ClaudeHandler for streaming API responses
+// and updates the Claude view if new content is available.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::claudeIdleCallback(void)
+{
+    if (_claudeHandler == NULL) return;
+
+    if (_claudeHandler->isRunning()) {
+        if (_claudeHandler->poll()) {
+            _claudeView->setDisplayLines(_claudeHandler->getDisplayLines(),
+                                         _claudeHandler->getDisplayLineCount());
+            _claudeView->scrollToBottom();
+
+            if (_claudeViewVisible) {
+                _claudeView->updateScreen();
+                if (programMode == CLAUDEVIEW) {
+                    _claudeView->placeCursor();
+                }
+                fflush(stdout);
+            }
+        }
+    } else if (_claudeHandler->needsRedraw()) {
+        _claudeHandler->clearNeedsRedraw();
+        _claudeView->setDisplayLines(_claudeHandler->getDisplayLines(),
+                                     _claudeHandler->getDisplayLineCount());
+        _claudeView->scrollToBottom();
+
+        if (_claudeViewVisible) {
+            _claudeView->updateScreen();
+            if (programMode == CLAUDEVIEW) {
+                _claudeView->placeCursor();
+            }
+            fflush(stdout);
+        }
+    }
+}
+#endif

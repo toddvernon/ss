@@ -101,6 +101,11 @@ public:
     void writeDefaults(CxString fname);
     // write out default values to ~/.ssrc
 
+#ifdef SS_CLAUDE_ENABLED
+    CxString claudeApiKey(void);
+    // get API key from claude config section (empty if not set)
+#endif
+
     // Color palette accessors
     int getFgPaletteSize(void);
     int getBgPaletteSize(void);
@@ -179,6 +184,10 @@ private:
 
     void initDefaultPalettes(void);
     void parsePalettes(CxJSONObject *baseItem);
+
+#ifdef SS_CLAUDE_ENABLED
+    CxString _claudeApiKey;     // API key from .ssrc claude section
+#endif
 };
 
 #endif /* SpreadsheetDefaults_h */

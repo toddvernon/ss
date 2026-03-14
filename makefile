@@ -27,6 +27,22 @@ ifeq ($(UNAME_S), darwin)
 endif
 
 
+## Developer mode (enables Claude AI) ########################
+
+ifdef DEVELOPER
+ifeq ($(UNAME_S), darwin)
+    BUILD_CLAUDE=1
+endif
+ifeq ($(UNAME_S),linux)
+    BUILD_CLAUDE=1
+endif
+endif
+
+ifdef BUILD_CLAUDE
+    CPPFLAGS += -DSS_CLAUDE_ENABLED
+endif
+
+
 ## Object & Libraries #########################################
 
 
@@ -55,8 +71,6 @@ CX_LIBS = \
 # Base library must come last - other libs depend on it
 CX_LIBS_BASE = $(LIB_CX_PLATFORM_LIB_DIR)/$(LIB_CX_BASE_NAME)
 
-ALL_LIBS = $(CX_LIBS) $(CX_LIBS_BASE)
-
 OBJECTS = \
 	$(APP_OBJECT_DIR)/Ss.o                   \
 	$(APP_OBJECT_DIR)/SheetEditor.o          \
@@ -66,6 +80,16 @@ OBJECTS = \
 	$(APP_OBJECT_DIR)/CommandTable.o         \
 	$(APP_OBJECT_DIR)/SpreadsheetDefaults.o  \
 	$(APP_OBJECT_DIR)/HelpView.o
+
+ifdef BUILD_CLAUDE
+OBJECTS += \
+	$(APP_OBJECT_DIR)/ClaudeHandler.o        \
+	$(APP_OBJECT_DIR)/ClaudeView.o
+CX_LIBS += $(LIB_CX_PLATFORM_LIB_DIR)/libcx_buildoutput.a
+CX_LIBS += $(LIB_CX_PLATFORM_LIB_DIR)/libcx_process.a
+endif
+
+ALL_LIBS = $(CX_LIBS) $(CX_LIBS_BASE)
 
 ALL_OBJECTS = $(OBJECTS)
 
@@ -135,11 +159,15 @@ $(APP_OBJECT_DIR)/CommandTable.o	: CommandTable.cpp
 $(APP_OBJECT_DIR)/SpreadsheetDefaults.o : SpreadsheetDefaults.cpp
 $(APP_OBJECT_DIR)/HelpView.o : HelpView.cpp
 
+ifdef BUILD_CLAUDE
+$(APP_OBJECT_DIR)/ClaudeHandler.o : ClaudeHandler.cpp
+$(APP_OBJECT_DIR)/ClaudeView.o : ClaudeView.cpp
+endif
+
 .PRECIOUS: $(CX_LIBS)
 .SUFFIXES: .cpp .C .cc .cxx .o
 
 
 $(OBJECTS):
 	$(CPP) $(CPPFLAGS) $(INC) -c $? -o $@
-
 

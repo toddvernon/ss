@@ -29,6 +29,11 @@
 #include "SpreadsheetDefaults.h"
 #include "HelpView.h"
 
+#ifdef SS_CLAUDE_ENABLED
+#include "ClaudeHandler.h"
+#include "ClaudeView.h"
+#endif
+
 #ifndef _SheetEditor_h_
 #define _SheetEditor_h_
 
@@ -67,6 +72,9 @@ class SheetEditor {
         COMMANDLINE,        // command prompt focused
         DATA_ENTRY,         // entering data into a cell
         HELPVIEW            // help modal displayed
+#ifdef SS_CLAUDE_ENABLED
+        , CLAUDEVIEW        // Claude AI chat focused
+#endif
     };
 
     enum CommandInputState {
@@ -169,6 +177,15 @@ class SheetEditor {
     // View freeze commands
     void CMD_ViewFreeze(CxString commandLine);
     void CMD_ViewUnfreeze(CxString commandLine);
+
+#ifdef SS_CLAUDE_ENABLED
+    // Claude AI chat methods
+    void CMD_Claude(CxString commandLine);
+    void enterClaudeMode(void);
+    void exitClaudeMode(void);
+    void focusClaudeView(CxKeyAction keyAction);
+    void claudeIdleCallback(void);
+#endif
 
     // Column format commands
     void CMD_FormatColAlignLeft(CxString commandLine);
@@ -306,6 +323,15 @@ class SheetEditor {
 
     // resize callback - coordinates all redrawing
     void screenResizeCallback(void);
+
+#ifdef SS_CLAUDE_ENABLED
+    // Claude AI state
+    ClaudeHandler *_claudeHandler;
+    ClaudeView *_claudeView;
+    int _claudeViewVisible;
+    CxUTFString _claudeInputBuffer;
+    int _claudeInputCursorPos;
+#endif
 };
 
 

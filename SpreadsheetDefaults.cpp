@@ -226,6 +226,23 @@ SpreadsheetDefaults::loadDefaults(CxString fname)
             // Parse color palettes
             //-------------------------------------------------------------------------------------
             parsePalettes(object);
+
+#ifdef SS_CLAUDE_ENABLED
+            //-------------------------------------------------------------------------------------
+            // Parse claude section
+            //-------------------------------------------------------------------------------------
+            CxJSONMember *claudeMember = object->find("claude");
+            if (claudeMember != NULL) {
+                if (claudeMember->object()->type() == CxJSONBase::OBJECT) {
+                    CxJSONObject *claudeObject = (CxJSONObject *)claudeMember->object();
+                    CxJSONMember *apiKeyMember = claudeObject->find("apiKey");
+                    if (apiKeyMember != NULL &&
+                        apiKeyMember->object()->type() == CxJSONBase::STRING) {
+                        _claudeApiKey = ((CxJSONString *)apiKeyMember->object())->get();
+                    }
+                }
+            }
+#endif
         }
     }
 
@@ -839,3 +856,17 @@ SpreadsheetDefaults::getBgPaletteString(int index)
     }
     return _bgPaletteStrings.at(index);
 }
+
+
+#ifdef SS_CLAUDE_ENABLED
+//-------------------------------------------------------------------------------------------------
+// SpreadsheetDefaults::claudeApiKey
+//
+// Returns API key from .ssrc claude section, or empty string if not configured.
+//-------------------------------------------------------------------------------------------------
+CxString
+SpreadsheetDefaults::claudeApiKey(void)
+{
+    return _claudeApiKey;
+}
+#endif

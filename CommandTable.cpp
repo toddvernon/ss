@@ -347,6 +347,16 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_QuitWithoutSave,
       NULL },
 
+#ifdef SS_CLAUDE_ENABLED
+    //--- claude- -------------------------------------------------------------
+    { "claude",
+      NULL,
+      "Open Claude AI chat",
+      0,
+      &SheetEditor::CMD_Claude,
+      NULL },
+#endif
+
     //--- end -----------------------------------------------------------------
     { NULL, NULL, NULL, 0, NULL, NULL }
 };
