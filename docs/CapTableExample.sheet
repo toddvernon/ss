@@ -1,0 +1,1319 @@
+{
+  "version": 1,
+  "currentPosition": "H13",
+  "cells": [
+    {
+      "cell": "A1",
+      "type": "text",
+      "text": "Randys Scooter Company",
+      "align": "left"
+    },
+    {
+      "cell": "F10",
+      "type": "text",
+      "text": "Shares",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "A3",
+      "type": "text",
+      "text": "Total Founder Shares"
+    },
+    {
+      "cell": "I5",
+      "type": "text",
+      "text": "Seed Investment",
+      "align": "left"
+    },
+    {
+      "cell": "C3",
+      "type": "double",
+      "value": 3.1e+06,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "C5",
+      "type": "text",
+      "text": "Founders",
+      "align": "center"
+    },
+    {
+      "cell": "A7",
+      "type": "text",
+      "text": "Pre-Money"
+    },
+    {
+      "cell": "D9",
+      "type": "text",
+      "text": "% Founder",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "C9",
+      "type": "text",
+      "text": "Founder",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "F5",
+      "type": "text",
+      "text": "Option Pool",
+      "align": "center"
+    },
+    {
+      "cell": "A12",
+      "type": "text",
+      "text": "Share Price:"
+    },
+    {
+      "cell": "C10",
+      "type": "text",
+      "text": "Shares",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "D10",
+      "type": "text",
+      "text": "Shares",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "C12",
+      "type": "double",
+      "value": 0.0001,
+      "currency": true,
+      "align": "right",
+      "decimalPlaces": 4
+    },
+    {
+      "cell": "I7",
+      "type": "double",
+      "value": 3.5e+06,
+      "currency": true,
+      "decimalPlaces": 0,
+      "align": "right"
+    },
+    {
+      "cell": "G10",
+      "type": "text",
+      "text": "%",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "K9",
+      "type": "text",
+      "text": "% Seed",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "I10",
+      "type": "text",
+      "text": "Cost",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "J10",
+      "type": "text",
+      "text": "Shares",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "K10",
+      "type": "text",
+      "text": "Shares",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "F31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "M10",
+      "type": "text",
+      "text": "Total Shares",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "I16",
+      "type": "double",
+      "value": 100000,
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "O10",
+      "type": "text",
+      "text": "Ownership",
+      "align": "right",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "O14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "O12",
+      "type": "text",
+      "text": "(fully diluted)",
+      "align": "right"
+    },
+    {
+      "cell": "K17",
+      "type": "formula",
+      "formula": "=J17/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M16",
+      "type": "formula",
+      "formula": "=SUM(C16,J16)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "O16",
+      "type": "formula",
+      "formula": "=M16/$M$33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "G24",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "O17",
+      "type": "formula",
+      "formula": "=M17/$M$33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O18",
+      "type": "formula",
+      "formula": "=M18/$M$33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "D31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "O20",
+      "type": "formula",
+      "formula": "=SUM(O16:O18)",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "M23",
+      "type": "formula",
+      "formula": "=F23",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "I28",
+      "type": "double",
+      "value": 1.15e+06,
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M25",
+      "type": "formula",
+      "formula": "=M23",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "O25",
+      "type": "formula",
+      "formula": "=M25/M33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "K29",
+      "type": "formula",
+      "formula": "=J29/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M28",
+      "type": "formula",
+      "formula": "=SUM(C28,J28)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "L31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "O28",
+      "type": "formula",
+      "formula": "=M28/$M$33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O29",
+      "type": "formula",
+      "formula": "=M29/$M$33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O30",
+      "type": "formula",
+      "formula": "=SUM(O28:O29)",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "M33",
+      "type": "formula",
+      "formula": "=M20+M25+M30",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "O32",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0,
+      "currency": false
+    },
+    {
+      "cell": "O33",
+      "type": "formula",
+      "formula": "=O20+O25+O30",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0,
+      "currency": false
+    },
+    {
+      "cell": "F14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "D14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "M30",
+      "type": "formula",
+      "formula": "=SUM(M28:M29)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "O24",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "G19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "M32",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "O21",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O22",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "K30",
+      "type": "formula",
+      "formula": "=J30/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J30",
+      "type": "formula",
+      "formula": "=SUM(J28:J29)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "I30",
+      "type": "formula",
+      "formula": "=SUM(I28:I29)",
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J17",
+      "type": "formula",
+      "formula": "=I17/$I$12",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "I17",
+      "type": "double",
+      "value": 200000,
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "G17",
+      "type": "formula",
+      "formula": "=F17/$F$33",
+      "thousands": true,
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "F17",
+      "type": "formula",
+      "formula": "=C17",
+      "thousands": true
+    },
+    {
+      "cell": "D17",
+      "type": "double",
+      "value": 0.23,
+      "percent": true
+    },
+    {
+      "cell": "C17",
+      "type": "formula",
+      "formula": "=$C$3*D17",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A17",
+      "type": "text",
+      "text": "Sarah Chen",
+      "align": "left"
+    },
+    {
+      "cell": "K16",
+      "type": "formula",
+      "formula": "=J16/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J16",
+      "type": "formula",
+      "formula": "=I16/$I$12",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "G16",
+      "type": "formula",
+      "formula": "=F16/$F$33",
+      "thousands": true,
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "F16",
+      "type": "formula",
+      "formula": "=C16",
+      "thousands": true
+    },
+    {
+      "cell": "D16",
+      "type": "double",
+      "value": 0.58,
+      "percent": true
+    },
+    {
+      "cell": "C16",
+      "type": "formula",
+      "formula": "=$C$3*D16",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A16",
+      "type": "text",
+      "text": "Alex Johnson",
+      "align": "left"
+    },
+    {
+      "cell": "I12",
+      "type": "formula",
+      "formula": "=F33/I7",
+      "align": "right",
+      "currency": true,
+      "decimalPlaces": 2
+    },
+    {
+      "cell": "M17",
+      "type": "formula",
+      "formula": "=SUM(C17,J17)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A18",
+      "type": "text",
+      "text": "Mike Rodriguez",
+      "align": "left"
+    },
+    {
+      "cell": "C18",
+      "type": "formula",
+      "formula": "=$C$3*D18",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "D18",
+      "type": "double",
+      "value": 0.19,
+      "percent": true
+    },
+    {
+      "cell": "F18",
+      "type": "formula",
+      "formula": "=C18",
+      "thousands": true
+    },
+    {
+      "cell": "G18",
+      "type": "formula",
+      "formula": "=F18/$F$33",
+      "thousands": true,
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "I18",
+      "type": "double",
+      "value": 25000,
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J18",
+      "type": "formula",
+      "formula": "=I18/$I$12",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K18",
+      "type": "formula",
+      "formula": "=J18/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M18",
+      "type": "formula",
+      "formula": "=SUM(C18,J18)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "D32",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "A33",
+      "type": "text",
+      "text": "Totals"
+    },
+    {
+      "cell": "C33",
+      "type": "formula",
+      "formula": "=C20",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "D33",
+      "type": "formula",
+      "formula": "=D20",
+      "percent": true
+    },
+    {
+      "cell": "F33",
+      "type": "formula",
+      "formula": "=F20+F25",
+      "thousands": true
+    },
+    {
+      "cell": "G33",
+      "type": "formula",
+      "formula": "=G20+G25",
+      "percent": true
+    },
+    {
+      "cell": "I33",
+      "type": "formula",
+      "formula": "=I20+I30",
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J33",
+      "type": "formula",
+      "formula": "=J20+J30",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K33",
+      "type": "formula",
+      "formula": "=K20+K30",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A35",
+      "type": "text",
+      "text": "Post-Money Value"
+    },
+    {
+      "cell": "F32",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "C35",
+      "type": "formula",
+      "formula": "=C12*C33",
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "I35",
+      "type": "formula",
+      "formula": "=I7+I33",
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J13",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J21",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J22",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J23",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K34",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J25",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J26",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J27",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "J32",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J34",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K21",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K22",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A15",
+      "type": "text",
+      "text": "Founders:"
+    },
+    {
+      "cell": "F9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "G9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "I9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "J9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "L9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "M9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "L10",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "O9",
+      "type": "empty",
+      "bgColor": "RGB:68,68,68"
+    },
+    {
+      "cell": "F24",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "C19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "D19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "F19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "I19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "J19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "K19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "L19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "M19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "M24",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "A23",
+      "type": "text",
+      "text": "<ungranted>"
+    },
+    {
+      "cell": "O23",
+      "type": "formula",
+      "formula": "=M23/M33",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O19",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "C14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "A14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "F21",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "D29",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D28",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D27",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D26",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D25",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D23",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D22",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "D21",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G32",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "G30",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G29",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G28",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G27",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G26",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "G22",
+      "type": "empty",
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "G21",
+      "type": "empty",
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "M29",
+      "type": "formula",
+      "formula": "=SUM(C29,J29)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J29",
+      "type": "formula",
+      "formula": "=I29/$I$12",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "I29",
+      "type": "double",
+      "value": 25000,
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A29",
+      "type": "text",
+      "text": "David Park",
+      "align": "left"
+    },
+    {
+      "cell": "K28",
+      "type": "formula",
+      "formula": "=J28/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K23",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K25",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K26",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K27",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "K32",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J35",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M21",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M22",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M26",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M27",
+      "type": "empty",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "M31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "F22",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "F26",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "G14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "I14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "J14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "K14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "L14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "M14",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "J28",
+      "type": "formula",
+      "formula": "=I28/$I$12",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "A28",
+      "type": "text",
+      "text": "Summit Ventures",
+      "align": "left"
+    },
+    {
+      "cell": "A27",
+      "type": "text",
+      "text": "Investors:"
+    },
+    {
+      "cell": "G25",
+      "type": "formula",
+      "formula": "=G23",
+      "thousands": true,
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "F25",
+      "type": "formula",
+      "formula": "=F23",
+      "thousands": true
+    },
+    {
+      "cell": "G23",
+      "type": "formula",
+      "formula": "=F23/$F$33",
+      "thousands": true,
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "F23",
+      "type": "double",
+      "value": 400000,
+      "thousands": true
+    },
+    {
+      "cell": "A22",
+      "type": "text",
+      "text": "Option Pool:",
+      "align": "left"
+    },
+    {
+      "cell": "C31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "I31",
+      "type": "empty",
+      "symbolFill": "horizontal"
+    },
+    {
+      "cell": "F27",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "F28",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "F29",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "F30",
+      "type": "empty",
+      "thousands": true
+    },
+    {
+      "cell": "M20",
+      "type": "formula",
+      "formula": "=SUM(M16:M18)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "K20",
+      "type": "formula",
+      "formula": "=J20/$J$33",
+      "percent": true,
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "J20",
+      "type": "formula",
+      "formula": "=SUM(J16:J18)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "I20",
+      "type": "formula",
+      "formula": "=SUM(I16:I18)",
+      "currency": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "G20",
+      "type": "formula",
+      "formula": "=SUM(G16:G18)",
+      "thousands": true,
+      "percent": true,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "F20",
+      "type": "formula",
+      "formula": "=SUM(F16:F18)",
+      "thousands": true
+    },
+    {
+      "cell": "D20",
+      "type": "formula",
+      "formula": "=SUM(D16:D18)",
+      "percent": true
+    },
+    {
+      "cell": "C20",
+      "type": "formula",
+      "formula": "=SUM(C16:C18)",
+      "thousands": true,
+      "decimalPlaces": 0
+    },
+    {
+      "cell": "D30",
+      "type": "empty",
+      "percent": true
+    },
+    {
+      "cell": "O26",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    },
+    {
+      "cell": "O27",
+      "type": "empty",
+      "percent": true,
+      "thousands": true,
+      "currency": false,
+      "decimalPlaces": 1
+    }
+  ],
+  "columns": {
+    "A": {
+      "width": 25
+    },
+    "B": {
+      "width": 2
+    },
+    "C": {
+      "width": 12
+    },
+    "D": {
+      "width": 11
+    },
+    "E": {
+      "width": 6
+    },
+    "F": {
+      "width": 11,
+      "decimalPlaces": 0
+    },
+    "G": {
+      "width": 8
+    },
+    "H": {
+      "width": 7
+    },
+    "I": {
+      "width": 12
+    },
+    "J": {
+      "width": 11
+    },
+    "K": {
+      "width": 7
+    },
+    "L": {
+      "width": 2
+    },
+    "M": {
+      "width": 13
+    },
+    "N": {
+      "width": 3
+    },
+    "O": {
+      "width": 18
+    }
+  }
+}

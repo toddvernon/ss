@@ -16,8 +16,7 @@
 
 #include <cx/base/utfstring.h>
 
-// ss version
-#define SS_VERSION "1.0"
+#include "SsVersion.h"
 
 //-------------------------------------------------------------------------------------------------
 // Platform-conditional expand/collapse indicators
