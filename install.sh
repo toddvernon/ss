@@ -33,3 +33,6 @@ if [ -f ss_help.md ]; then
 fi
 
 echo "Done. Run 'ss' to start."
+echo ""
+echo "Press Enter to close..."
+read dummy
