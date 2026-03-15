@@ -10,3 +10,6 @@ linux_*/
 
 # Test spreadsheets
 *.sheet
+
+# Claude Code local settings
+.claude/
