@@ -69,8 +69,18 @@ Ctrl+X Ctrl+C       Quit (prompts to save)
 
 ## ESC Commands
 
-Press ESC to enter command mode, then type command prefix.
-Commands autocomplete as you type. TAB cycles matches. Organized by category:
+Press ESC to open the command prompt. Then just start typing.
+
+How it works:
+  1. Each keystroke narrows the matches. The shared prefix fills in automatically.
+  2. When your input uniquely identifies a command, it executes immediately.
+  3. Invalid keystrokes are rejected — you cannot type a wrong path.
+
+Example: to delete a row, type ESC then d then r. After 'd', the prompt
+fills "delete-". After 'r', "delete-row" is the only match, so it runs.
+Three keystrokes total.
+
+Commands are organized by category:
 
 file-
   file-load                   Load spreadsheet from file
@@ -186,4 +196,4 @@ Long text spills into neighboring empty cells:
 - Column defaults cascade to cells without explicit formatting
 - Colors are preserved when editing cell values
 - To unhide rows/columns, select a range spanning the gap, then use show
-- Commands autocomplete as you type
+- ESC commands auto-complete and auto-execute — most take 2-3 keystrokes
