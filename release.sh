@@ -72,8 +72,26 @@ echo ""
 echo "SsVersion.h has been updated. Build on Linux now:"
 echo "  cd ~/dev/cx/cx_apps/ss && make clean && make"
 echo ""
-echo "Press Enter when the Linux build is complete..."
-read -r
+
+while true; do
+    echo "Press Enter when the Linux build is complete..."
+    read -r
+
+    if [ ! -f linux_x86_64/ss ]; then
+        echo "  linux_x86_64/ss not found. Waiting for Dropbox sync..."
+        echo ""
+        continue
+    fi
+
+    LINUX_VER=$(strings linux_x86_64/ss | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | head -1)
+    if [ "$LINUX_VER" = "$VERSION" ]; then
+        echo "  Linux binary verified: v$LINUX_VER"
+        break
+    else
+        echo "  Linux binary is v$LINUX_VER, expected v$VERSION. Not synced yet."
+        echo ""
+    fi
+done
 
 #-------------------------------------------------------------------------------------------------
 # 3. Build macOS
