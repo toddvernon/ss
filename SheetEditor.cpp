@@ -4782,13 +4782,16 @@ SheetEditor::CMD_ViewFreeze(CxString commandLine)
 {
     (void)commandLine;
 
-    if (!_rangeSelectActive) {
-        setMessage("Select a range starting at A1 first");
-        return;
-    }
-
     int minRow, maxRow, minCol, maxCol;
-    normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+
+    if (!_rangeSelectActive) {
+        // No range selected - use current cell as single-cell selection
+        CxSheetCellCoordinate pos = sheetModel->getCurrentPosition();
+        minRow = maxRow = pos.getRow();
+        minCol = maxCol = pos.getCol();
+    } else {
+        normalizeRange(_rangeAnchor, _rangeCurrent, &minRow, &maxRow, &minCol, &maxCol);
+    }
 
     // Range must include A1
     if (minRow != 0 || minCol != 0) {
@@ -4814,9 +4817,8 @@ SheetEditor::CMD_ViewFreeze(CxString commandLine)
         // Single row tall (A1:C1): freeze columns only
         freezeCol = maxCol + 1;
     } else {
-        // Just A1 selected - nothing meaningful to freeze
-        setMessage("Select more than A1 to define a freeze region");
-        return;
+        // Just A1 selected - freeze column A only
+        freezeCol = 1;
     }
 
     clearRangeSelection();
