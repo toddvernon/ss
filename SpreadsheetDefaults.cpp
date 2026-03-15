@@ -22,6 +22,7 @@
 //-------------------------------------------------------------------------------------------------
 SpreadsheetDefaults::SpreadsheetDefaults(void)
 :   _baseNode(NULL)
+,   _firstRun(0)
 {
     // Header colors - default to NONE
     _headerTextColor       = new CxAnsiForegroundColor(CxAnsiForegroundColor::NONE);
@@ -553,6 +554,9 @@ SpreadsheetDefaults::writeDefaults(CxString path)
         return;
     }
 
+    // Mark as first run since we're creating the config file
+    _firstRun = 1;
+
     // Platform-specific default color values
     // Cell backgrounds use ANSI:NONE to inherit terminal background
 #if defined(_OSX_) || defined(_LINUX_)
@@ -855,6 +859,18 @@ SpreadsheetDefaults::getBgPaletteString(int index)
         return "ANSI:NONE";
     }
     return _bgPaletteStrings.at(index);
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SpreadsheetDefaults::isFirstRun
+//
+// Returns 1 if .ssrc was just created (first time running ss).
+//-------------------------------------------------------------------------------------------------
+int
+SpreadsheetDefaults::isFirstRun(void)
+{
+    return _firstRun;
 }
 
 

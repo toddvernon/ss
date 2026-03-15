@@ -285,6 +285,12 @@ SheetEditor::run(void)
 {
     programMode = EDIT;
 
+    // Show help on first run (when .ssrc was just created)
+    if (spreadsheetDefaults->isFirstRun()) {
+        helpView->setFirstRun(1);
+        showHelpView();
+    }
+
     while (1) {
         // Get next keyboard action (blocking)
         CxKeyAction keyAction = keyboard->getAction();

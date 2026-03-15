@@ -101,6 +101,9 @@ public:
     void writeDefaults(CxString fname);
     // write out default values to ~/.ssrc
 
+    int isFirstRun(void);
+    // returns 1 if .ssrc was just created (first time running ss)
+
 #ifdef SS_CLAUDE_ENABLED
     CxString claudeApiKey(void);
     // get API key from claude config section (empty if not set)
@@ -184,6 +187,8 @@ private:
 
     void initDefaultPalettes(void);
     void parsePalettes(CxJSONObject *baseItem);
+
+    int _firstRun;              // 1 if .ssrc was just created
 
 #ifdef SS_CLAUDE_ENABLED
     CxString _claudeApiKey;     // API key from .ssrc claude section

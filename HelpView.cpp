@@ -41,6 +41,7 @@ HelpView::HelpView( SpreadsheetDefaults *pd, CxScreen *screenPtr )
     _visible = 0;
     _helpFileLoaded = 0;
     _cachedContentWidth = 0;
+    _isFirstRun = 0;
     // NOTE: No resize callback here - SheetEditor owns all resize handling
 
     // try to load help file
@@ -226,6 +227,46 @@ HelpView::rebuildVisibleItems( void )
 
     int sectionCount = (int)_sections.entries();
     int contentWidth = _cachedContentWidth;
+
+    //---------------------------------------------------------------------------------------------
+    // Add welcome message if this is the first run
+    //---------------------------------------------------------------------------------------------
+    if (_isFirstRun && contentWidth > 0) {
+        // Welcome message lines
+        const char *welcomeLines[] = {
+            "",
+            "Welcome to ss!",
+            "",
+            "It looks like this is the first time you have used ss.",
+            "A config file ~/.ssrc has been written to your home directory.",
+            "You can configure defaults using this file.",
+            "",
+            "You can always access help with Ctrl-H.",
+            "Explore the help sections below or press ESC to start editing.",
+            "",
+            NULL
+        };
+
+        for (int i = 0; welcomeLines[i] != NULL; i++) {
+            HelpViewItem *welcomeItem = new HelpViewItem();
+            welcomeItem->type = HELPITEM_WELCOME;
+            welcomeItem->sectionIndex = -1;
+            welcomeItem->lineIndex = i;
+
+            CxString text = " ";
+            text += welcomeLines[i];
+            int textLen = (int)text.length();
+            if (textLen < contentWidth - 1) {
+                int padNeeded = contentWidth - 1 - textLen;
+                if (padNeeded > 0 && padNeeded <= (int)_paddingSpaces.length()) {
+                    text += _paddingSpaces.subString(0, padNeeded);
+                }
+            }
+            text += " ";
+            welcomeItem->formattedText = text;
+            _visibleItems.append(welcomeItem);
+        }
+    }
 
     for (int s = 0; s < sectionCount; s++) {
         HelpSection *sec = _sections.at(s);
@@ -497,11 +538,15 @@ HelpView::redraw( void )
             int isSelected = (selectedListItemIndex == logicalItem);
             int isSeparator = (item->type == HELPITEM_SEPARATOR);
             int isSection = (item->type == HELPITEM_SECTION);
+            int isWelcome = (item->type == HELPITEM_WELCOME);
 
             // Use static CxScreen:: calls - instance calls don't work in this context
             if (isSelected && !isSeparator) {
                 CxScreen::setForegroundColor(spreadsheetDefaults->selectedCellTextColor());
                 CxScreen::setBackgroundColor(spreadsheetDefaults->selectedCellBackgroundColor());
+            } else if (isWelcome) {
+                CxScreen::setForegroundColor(spreadsheetDefaults->messageLineTextColor());
+                // No background color - use terminal default
             } else if (isSection) {
                 CxScreen::setForegroundColor(spreadsheetDefaults->headerHighlightTextColor());
                 // No background color - use terminal default
@@ -566,11 +611,15 @@ HelpView::redrawLine( int logicalIndex, int isSelected )
         HelpViewItem *item = _visibleItems.at(logicalIndex);
         int isSeparator = (item->type == HELPITEM_SEPARATOR);
         int isSection = (item->type == HELPITEM_SECTION);
+        int isWelcome = (item->type == HELPITEM_WELCOME);
 
         // Use static CxScreen:: calls - instance calls don't work in this context
         if (isSelected && !isSeparator) {
             CxScreen::setForegroundColor(spreadsheetDefaults->selectedCellTextColor());
             CxScreen::setBackgroundColor(spreadsheetDefaults->selectedCellBackgroundColor());
+        } else if (isWelcome) {
+            CxScreen::setForegroundColor(spreadsheetDefaults->messageLineTextColor());
+            // No background color - use terminal default
         } else if (isSection) {
             CxScreen::setForegroundColor(spreadsheetDefaults->headerHighlightTextColor());
             // No background color - use terminal default
@@ -697,6 +746,20 @@ void
 HelpView::setVisible( int visible )
 {
     _visible = visible;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// HelpView::setFirstRun
+//
+// Set the first run flag for welcome message display.
+//
+//-------------------------------------------------------------------------------------------------
+void
+HelpView::setFirstRun( int firstRun )
+{
+    _isFirstRun = firstRun;
+    rebuildVisibleItems();
 }
 
 
