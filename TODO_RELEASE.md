@@ -1,17 +1,16 @@
 # ss Release TODO
 
 ## Screenshots
-- [ ] Take terminal screenshot of main grid, save as `docs/SpreadsheetView.png`
-- [ ] Take terminal screenshot of formula editing or cell hunt, save as `docs/FormulaMode.png`
+- [x] Take terminal screenshots (Hero.png, Formula.png, Help.png in docs/)
 
 ## Check site locally
-- [ ] `open docs/index.html` in browser, verify screenshots load and layout looks good
+- [x] `open docs/index.html` in browser, verify screenshots load and layout looks good
 
 ## Make repo public
-- [ ] GitHub > toddvernon/ss > Settings > Danger Zone > Change visibility > Public
+- [x] GitHub > toddvernon/ss > Settings > Danger Zone > Change visibility > Public
 
 ## Enable GitHub Pages
-- [ ] `gh api repos/toddvernon/ss/pages -X POST -f source.branch=main -f source.path=/docs`
+- [x] `gh api repos/toddvernon/ss/pages -X POST -f source.branch=main -f source.path=/docs`
 - [ ] Verify https://toddvernon.github.io/ss/ serves
 
 ## Update portfolio site

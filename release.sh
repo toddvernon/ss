@@ -108,6 +108,7 @@ mkdir -p "$MACDIR"
 cp darwin_arm64/ss "$MACDIR/ss"
 cp install.sh "$MACDIR/install.sh"
 cp ss_help.md "$MACDIR/ss_help.md"
+cp docs/CapTableExample.sheet "$MACDIR/CapTableExample.sheet"
 tar czf "ss-macos.tar.gz" -C "$STAGING" "ss-macos"
 echo "Created ss-macos.tar.gz"
 
@@ -118,6 +119,7 @@ if [ -f linux_x86_64/ss ]; then
     cp linux_x86_64/ss "$LINDIR/ss"
     cp install.sh "$LINDIR/install.sh"
     cp ss_help.md "$LINDIR/ss_help.md"
+    cp docs/CapTableExample.sheet "$LINDIR/CapTableExample.sheet"
     tar czf "ss-linux.tar.gz" -C "$STAGING" "ss-linux"
     echo "Created ss-linux.tar.gz"
 fi

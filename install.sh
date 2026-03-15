@@ -24,12 +24,17 @@ else
     exit 1
 fi
 
-# Install help file
+# Install help file and example
 sudo mkdir -p "$SHARE_DIR"
 if [ -f ss_help.md ]; then
     sudo cp ss_help.md "$SHARE_DIR/ss_help.md"
     sudo chmod 644 "$SHARE_DIR/ss_help.md"
     echo "  $SHARE_DIR/ss_help.md"
+fi
+if [ -f CapTableExample.sheet ]; then
+    sudo cp CapTableExample.sheet "$SHARE_DIR/CapTableExample.sheet"
+    sudo chmod 644 "$SHARE_DIR/CapTableExample.sheet"
+    echo "  $SHARE_DIR/CapTableExample.sheet"
 fi
 
 echo "Done. Run 'ss' to start."
