@@ -14,6 +14,6 @@
 #ifndef _SsVersion_h_
 #define _SsVersion_h_
 
-#define SS_VERSION "1.0.2"
+#define SS_VERSION "1.0.3"
 
 #endif
