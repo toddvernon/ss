@@ -41,7 +41,6 @@ HelpView::HelpView( SpreadsheetDefaults *pd, CxScreen *screenPtr )
     _visible = 0;
     _helpFileLoaded = 0;
     _cachedContentWidth = 0;
-
     // NOTE: No resize callback here - SheetEditor owns all resize handling
 
     // try to load help file
@@ -484,7 +483,7 @@ HelpView::redraw( void )
         int logicalItem = firstVisibleListIndex + c;
         int row = screenHelpFirstListLine + c;
 
-        // position cursor at start of content area
+        // position cursor at start of content area (matching cm's pattern exactly)
         screen->placeCursor(row, contentLeft);
 
         // if this item exists in the visible list
@@ -499,16 +498,16 @@ HelpView::redraw( void )
             int isSeparator = (item->type == HELPITEM_SEPARATOR);
             int isSection = (item->type == HELPITEM_SECTION);
 
+            // Use static CxScreen:: calls - instance calls don't work in this context
             if (isSelected && !isSeparator) {
-                screen->setForegroundColor(spreadsheetDefaults->selectedCellTextColor());
-                screen->setBackgroundColor(spreadsheetDefaults->selectedCellBackgroundColor());
+                CxScreen::setForegroundColor(spreadsheetDefaults->selectedCellTextColor());
+                CxScreen::setBackgroundColor(spreadsheetDefaults->selectedCellBackgroundColor());
             } else if (isSection) {
-                // use header color for section titles
-                screen->setForegroundColor(spreadsheetDefaults->headerHighlightTextColor());
-                screen->setBackgroundColor(spreadsheetDefaults->cellBackgroundColor());
+                CxScreen::setForegroundColor(spreadsheetDefaults->headerHighlightTextColor());
+                // No background color - use terminal default
             } else {
-                screen->setForegroundColor(spreadsheetDefaults->cellTextColor());
-                screen->setBackgroundColor(spreadsheetDefaults->cellBackgroundColor());
+                CxScreen::setForegroundColor(spreadsheetDefaults->cellTextColor());
+                // No background color - use terminal default
             }
 
             // draw the pre-computed line (or separator)
@@ -518,7 +517,7 @@ HelpView::redraw( void )
                 screen->writeText(item->formattedText);
             }
 
-            screen->resetColors();
+            CxScreen::resetColors();
 
             if (isSelected && !isSeparator) {
                 cursorRow = row;
@@ -528,15 +527,12 @@ HelpView::redraw( void )
         // draw empty line if beyond visible items
         //-----------------------------------------------------------------------------------------
         } else {
-            screen->setForegroundColor(spreadsheetDefaults->cellTextColor());
-            screen->setBackgroundColor(spreadsheetDefaults->cellBackgroundColor());
             screen->writeText(_emptyLine);
-            screen->resetColors();
         }
     }
 
     screen->placeCursor(cursorRow, contentLeft);
-    screen->resetColors();
+    CxScreen::resetColors();
 
     // cache the footer for change detection
     _lastFooter = footer;
@@ -571,15 +567,16 @@ HelpView::redrawLine( int logicalIndex, int isSelected )
         int isSeparator = (item->type == HELPITEM_SEPARATOR);
         int isSection = (item->type == HELPITEM_SECTION);
 
+        // Use static CxScreen:: calls - instance calls don't work in this context
         if (isSelected && !isSeparator) {
-            screen->setForegroundColor(spreadsheetDefaults->selectedCellTextColor());
-            screen->setBackgroundColor(spreadsheetDefaults->selectedCellBackgroundColor());
+            CxScreen::setForegroundColor(spreadsheetDefaults->selectedCellTextColor());
+            CxScreen::setBackgroundColor(spreadsheetDefaults->selectedCellBackgroundColor());
         } else if (isSection) {
-            screen->setForegroundColor(spreadsheetDefaults->headerHighlightTextColor());
-            screen->setBackgroundColor(spreadsheetDefaults->cellBackgroundColor());
+            CxScreen::setForegroundColor(spreadsheetDefaults->headerHighlightTextColor());
+            // No background color - use terminal default
         } else {
-            screen->setForegroundColor(spreadsheetDefaults->cellTextColor());
-            screen->setBackgroundColor(spreadsheetDefaults->cellBackgroundColor());
+            CxScreen::setForegroundColor(spreadsheetDefaults->cellTextColor());
+            // No background color - use terminal default
         }
 
         if (isSeparator) {
@@ -588,7 +585,7 @@ HelpView::redrawLine( int logicalIndex, int isSelected )
             screen->writeText(item->formattedText);
         }
 
-        screen->resetColors();
+        CxScreen::resetColors();
     }
 }
 
