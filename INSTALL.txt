@@ -1,0 +1,26 @@
+ss - Terminal Spreadsheet
+=========================
+
+Install
+-------
+
+From a terminal, cd into this directory and run:
+
+    bash install.sh
+
+This installs:
+  - ss binary to /usr/local/bin/
+  - Help file to /usr/local/share/ss/
+  - Example spreadsheet to /usr/local/share/ss/
+
+Note: On macOS, double-clicking install.sh may not work due to
+quarantine restrictions on downloaded files. Use "bash install.sh"
+from the terminal instead.
+
+Try It
+------
+
+    ss /usr/local/share/ss/CapTableExample.sheet
+
+Or just run "ss" to start with an empty spreadsheet.
+Press Ctrl-H for built-in help.

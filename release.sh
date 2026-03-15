@@ -125,6 +125,7 @@ MACDIR="$STAGING/ss-macos"
 mkdir -p "$MACDIR"
 cp darwin_arm64/ss "$MACDIR/ss"
 cp install.sh "$MACDIR/install.sh"
+cp INSTALL.txt "$MACDIR/INSTALL.txt"
 cp ss_help.md "$MACDIR/ss_help.md"
 cp docs/CapTableExample.sheet "$MACDIR/CapTableExample.sheet"
 tar czf "ss-macos.tar.gz" -C "$STAGING" "ss-macos"
@@ -136,6 +137,7 @@ if [ -f linux_x86_64/ss ]; then
     mkdir -p "$LINDIR"
     cp linux_x86_64/ss "$LINDIR/ss"
     cp install.sh "$LINDIR/install.sh"
+    cp INSTALL.txt "$LINDIR/INSTALL.txt"
     cp ss_help.md "$LINDIR/ss_help.md"
     cp docs/CapTableExample.sheet "$LINDIR/CapTableExample.sheet"
     tar czf "ss-linux.tar.gz" -C "$STAGING" "ss-linux"
@@ -178,7 +180,7 @@ tar xzf ss-macos.tar.gz   # or ss-linux.tar.gz
 cd ss-macos
 
 # Install to /usr/local
-./install.sh
+bash install.sh
 \`\`\`
 
 This installs:
