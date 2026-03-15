@@ -2095,7 +2095,7 @@ SheetEditor::getCellFormatIndicator(CxSheetCell *cell, int col)
     }
     if (decimals >= 0) {
         if (result.length() > 0) result.append(" ");
-        char decBuf[8];
+        char decBuf[16];
         snprintf(decBuf, sizeof(decBuf), ".%d", decimals);
         result.append(decBuf);
     }

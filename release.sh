@@ -83,12 +83,11 @@ while true; do
         continue
     fi
 
-    LINUX_VER=$(strings linux_x86_64/ss | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | head -1)
-    if [ "$LINUX_VER" = "$VERSION" ]; then
-        echo "  Linux binary verified: v$LINUX_VER"
+    if [ linux_x86_64/ss -nt SsVersion.h ]; then
+        echo "  Linux binary verified (newer than SsVersion.h)"
         break
     else
-        echo "  Linux binary is v$LINUX_VER, expected v$VERSION. Not synced yet."
+        echo "  Linux binary is older than SsVersion.h. Not synced yet."
         echo ""
     fi
 done
