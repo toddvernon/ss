@@ -13,6 +13,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <math.h>
 #include <signal.h>
 
 #include <cx/base/utfstring.h>
@@ -202,6 +204,11 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
     sigprocmask(SIG_SETMASK, &oldSet, NULL);
 
     //---------------------------------------------------------------------------------------------
+    // Enable mouse tracking
+    //---------------------------------------------------------------------------------------------
+    CxScreen::enableMouseTracking();
+
+    //---------------------------------------------------------------------------------------------
     // Initial screen draw
     //---------------------------------------------------------------------------------------------
     // Set file path for status line display
@@ -246,6 +253,9 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 //-------------------------------------------------------------------------------------------------
 SheetEditor::~SheetEditor(void)
 {
+    // Disable mouse tracking before cleanup
+    CxScreen::disableMouseTracking();
+
     if (sheetView != NULL) {
         delete sheetView;
     }
@@ -738,6 +748,164 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
             else if (tag == "<option-delete>") {
                 // Delete key: clear selected range or current cell
                 CMD_Clear("");
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Mouse click - select cell under cursor, or edit if clicking command line
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::MOUSE_PRESS:
+        {
+            int termRow = keyAction.mouseRow();
+            int termCol = keyAction.mouseCol();
+            int button = keyAction.mouseButton();
+
+            // Only handle left button (1)
+            if (button == 1) {
+                // Check if click is on the command line row - equivalent to pressing Enter
+                if (termRow == commandLineView->getScreenRow()) {
+                    editCurrentCell();
+                    break;
+                }
+
+                int dataRow, dataCol;
+                if (sheetView->terminalToCell(termRow, termCol, &dataRow, &dataCol)) {
+                    // Cancel any existing range selection
+                    if (_rangeSelectActive) {
+                        CxSList<CxSheetCellCoordinate> rangeCells;
+                        int minRow = _rangeAnchor.getRow();
+                        int maxRow = _rangeCurrent.getRow();
+                        int minCol = _rangeAnchor.getCol();
+                        int maxCol = _rangeCurrent.getCol();
+                        if (minRow > maxRow) { int t = minRow; minRow = maxRow; maxRow = t; }
+                        if (minCol > maxCol) { int t = minCol; minCol = maxCol; maxCol = t; }
+                        for (int r = minRow; r <= maxRow; r++) {
+                            for (int c = minCol; c <= maxCol; c++) {
+                                rangeCells.append(CxSheetCellCoordinate(r, c));
+                            }
+                        }
+                        _rangeSelectActive = 0;
+                        sheetView->setRangeSelection(0, _rangeAnchor, _rangeCurrent);
+                        sheetView->updateCells(rangeCells);
+                    }
+
+                    CxSheetCellCoordinate oldPos = sheetModel->getCurrentPosition();
+                    CxSheetCellCoordinate newPos(dataRow, dataCol);
+
+                    // Check for shift+click to start/extend range
+                    if (keyAction.mouseShift()) {
+                        if (!_rangeSelectActive) {
+                            _rangeSelectActive = 1;
+                            _rangeAnchor = oldPos;
+                        }
+                        _rangeCurrent = newPos;
+                        sheetModel->jumpToCell(newPos);
+                        sheetView->setRangeSelection(1, _rangeAnchor, _rangeCurrent);
+                        sheetView->updateScreen();
+                    } else {
+                        // Normal click - just move cursor
+                        sheetModel->jumpToCell(newPos);
+                        sheetView->updateCursorMove(oldPos, newPos);
+                    }
+                    sheetView->updateStatusLine();
+                    resetPrompt();
+                }
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Mouse drag - extend range selection
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::MOUSE_DRAG:
+        {
+            int termRow = keyAction.mouseRow();
+            int termCol = keyAction.mouseCol();
+            int button = keyAction.mouseButton();
+
+            // Only handle left button (1) drag for range selection
+            if (button == 1) {
+                int dataRow, dataCol;
+                if (sheetView->terminalToCell(termRow, termCol, &dataRow, &dataCol)) {
+                    // Start or extend range selection
+                    if (!_rangeSelectActive) {
+                        _rangeSelectActive = 1;
+                        _rangeAnchor = sheetModel->getCurrentPosition();
+                    }
+
+                    CxSheetCellCoordinate oldCurrent = _rangeCurrent;
+                    _rangeCurrent = CxSheetCellCoordinate(dataRow, dataCol);
+
+                    if (oldCurrent.getRow() != _rangeCurrent.getRow() ||
+                        oldCurrent.getCol() != _rangeCurrent.getCol()) {
+                        sheetModel->jumpToCell(_rangeCurrent);
+                        sheetView->setRangeSelection(1, _rangeAnchor, _rangeCurrent);
+                        sheetView->updateRangeSelectionMove(_rangeAnchor, oldCurrent, _rangeCurrent);
+                        sheetView->updateStatusLine();
+                        resetPrompt();
+                    }
+                }
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Mouse release - finalize selection
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::MOUSE_RELEASE:
+        {
+            // Selection is already tracked during drag, nothing special needed on release
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Mouse double-click - select cell and enter edit mode
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::MOUSE_DOUBLE_CLICK:
+        {
+            int termRow = keyAction.mouseRow();
+            int termCol = keyAction.mouseCol();
+            int button = keyAction.mouseButton();
+
+            // Only handle left button (1)
+            if (button == 1) {
+                int dataRow, dataCol;
+                if (sheetView->terminalToCell(termRow, termCol, &dataRow, &dataCol)) {
+                    // Move to the clicked cell
+                    CxSheetCellCoordinate oldPos = sheetModel->getCurrentPosition();
+                    CxSheetCellCoordinate newPos(dataRow, dataCol);
+                    sheetModel->jumpToCell(newPos);
+                    sheetView->updateCursorMove(oldPos, newPos);
+                    sheetView->updateStatusLine();
+
+                    // Enter edit mode for the cell
+                    editCurrentCell();
+                }
+            }
+        }
+        break;
+
+        //-------------------------------------------------------------------------------------
+        // Mouse wheel - scroll viewport
+        //-------------------------------------------------------------------------------------
+        case CxKeyAction::MOUSE_WHEEL:
+        {
+            int button = keyAction.mouseButton();
+            int scrollAmount = 3;  // Scroll 3 rows at a time
+
+            // button 4 = wheel up, button 5 = wheel down
+            int rowDelta = (button == 4) ? -scrollAmount : scrollAmount;
+
+            // Shift+wheel scrolls horizontally
+            if (keyAction.mouseShift()) {
+                if (sheetView->scrollViewport(0, rowDelta)) {
+                    sheetView->updateScreen();
+                }
+            } else {
+                if (sheetView->scrollViewport(rowDelta, 0)) {
+                    sheetView->updateScreen();
+                }
             }
         }
         break;
@@ -1959,6 +2127,70 @@ SheetEditor::CMD_FormatColFit(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
+// SheetEditor::captureCellFormatting
+//
+// Capture all formatting attributes from a cell before it is replaced.
+// This allows preserving formatting when editing a cell's value.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::captureCellFormatting(CxSheetCell *cell, CellFormatAttrs *attrs)
+{
+    attrs->hasCurrency = 0;
+    attrs->hasPercent = 0;
+    attrs->hasThousands = 0;
+    attrs->hasDecimalPlaces = 0;
+    attrs->decimalPlaces = 2;
+    attrs->hasAlign = 0;
+    attrs->hasFgColor = 0;
+    attrs->hasBgColor = 0;
+
+    if (cell == NULL) {
+        return;
+    }
+
+    attrs->hasCurrency = cell->hasAppAttribute("currency") ? 1 : 0;
+    attrs->hasPercent = cell->hasAppAttribute("percent") ? 1 : 0;
+    attrs->hasThousands = cell->hasAppAttribute("thousands") ? 1 : 0;
+    attrs->hasDecimalPlaces = cell->hasAppAttribute("decimalPlaces") ? 1 : 0;
+    attrs->decimalPlaces = cell->getAppAttributeInt("decimalPlaces", 2);
+    attrs->hasAlign = cell->hasAppAttribute("align") ? 1 : 0;
+    if (attrs->hasAlign) {
+        attrs->align = cell->getAppAttributeString("align");
+    }
+    attrs->hasFgColor = cell->hasAppAttribute("fgColor") ? 1 : 0;
+    if (attrs->hasFgColor) {
+        attrs->fgColor = cell->getAppAttributeString("fgColor");
+    }
+    attrs->hasBgColor = cell->hasAppAttribute("bgColor") ? 1 : 0;
+    if (attrs->hasBgColor) {
+        attrs->bgColor = cell->getAppAttributeString("bgColor");
+    }
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::restoreCellFormatting
+//
+// Restore previously captured formatting attributes to a cell.
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::restoreCellFormatting(CxSheetCell *cell, CellFormatAttrs *attrs)
+{
+    if (cell == NULL) {
+        return;
+    }
+
+    if (attrs->hasCurrency) cell->setAppAttribute("currency", true);
+    if (attrs->hasPercent) cell->setAppAttribute("percent", true);
+    if (attrs->hasThousands) cell->setAppAttribute("thousands", true);
+    if (attrs->hasDecimalPlaces) cell->setAppAttribute("decimalPlaces", attrs->decimalPlaces);
+    if (attrs->hasAlign) cell->setAppAttribute("align", attrs->align.data());
+    if (attrs->hasFgColor) cell->setAppAttribute("fgColor", attrs->fgColor.data());
+    if (attrs->hasBgColor) cell->setAppAttribute("bgColor", attrs->bgColor.data());
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // SheetEditor::deduceEntryModeFromChar
 //
 // Determine the appropriate data entry mode based on the first character typed.
@@ -2171,7 +2403,7 @@ SheetEditor::editCurrentCell(void)
         _dataEntryMode = ENTRY_GENERAL;
     }
 
-    // Load cell content into buffer (getCellDisplayText handles formatting)
+    // Load cell content into buffer (getCellDisplayText shows formatted value)
     _dataEntryBuffer.fromCxString(getCellDisplayText(cell), 8);
 
     // Position cursor at end of existing content
@@ -2267,6 +2499,31 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
             updateDataEntryDisplay();
         }
     }
+
+    // Mouse click in formula mode - enter cell hunt mode and select clicked cell
+    if (action == CxKeyAction::MOUSE_PRESS && _dataEntryMode == ENTRY_FORMULA) {
+        int termRow = keyAction.mouseRow();
+        int termCol = keyAction.mouseCol();
+        int button = keyAction.mouseButton();
+
+        if (button == 1) {  // left button only
+            int dataRow, dataCol;
+            if (sheetView->terminalToCell(termRow, termCol, &dataRow, &dataCol)) {
+                // Enter cell hunt mode with the clicked cell
+                _inCellHuntMode = 1;
+                _cellHuntRangeActive = 0;
+                _cellHuntFormulaPos = sheetModel->getCurrentPosition();
+                _cellHuntCurrentPos = CxSheetCellCoordinate(dataRow, dataCol);
+                _cellHuntAnchorPos = _cellHuntCurrentPos;
+                _cellHuntInsertPos = _dataEntryCursorPos;
+
+                // Update SheetView with hunt mode state
+                sheetView->setCellHuntMode(1, _cellHuntFormulaPos, _cellHuntCurrentPos);
+                sheetView->updateScreen();
+                updateCellHuntDisplay();
+            }
+        }
+    }
 }
 
 
@@ -2285,22 +2542,10 @@ SheetEditor::commitDataEntry(void)
     // Convert UTF buffer to bytes for cell storage
     CxString bufferText = _dataEntryBuffer.toBytes();
 
-    // Preserve color attributes from the existing cell (applies to all entry modes)
-    CxSheetCell *oldCellForColors = sheetModel->getCellPtr(pos);
-    int oldHasFgColor = 0;
-    int oldHasBgColor = 0;
-    CxString oldFgColor;
-    CxString oldBgColor;
-    if (oldCellForColors) {
-        oldHasFgColor = oldCellForColors->hasAppAttribute("fgColor") ? 1 : 0;
-        oldHasBgColor = oldCellForColors->hasAppAttribute("bgColor") ? 1 : 0;
-        if (oldHasFgColor) {
-            oldFgColor = oldCellForColors->getAppAttributeString("fgColor");
-        }
-        if (oldHasBgColor) {
-            oldBgColor = oldCellForColors->getAppAttributeString("bgColor");
-        }
-    }
+    // Capture all formatting attributes from the existing cell before replacing it
+    CxSheetCell *oldCellPtr = sheetModel->getCellPtr(pos);
+    CellFormatAttrs oldAttrs;
+    captureCellFormatting(oldCellPtr, &oldAttrs);
 
     if (_dataEntryMode == ENTRY_TEXTMAP) {
         // Textmap mode - strip leading '@' and store as appAttribute on EMPTY cell
@@ -2312,11 +2557,11 @@ SheetEditor::commitDataEntry(void)
         cell.setAppAttribute("textmap", ruleText.data());
         sheetModel->setCell(pos, cell);
 
-        // Restore color attributes
+        // Restore color attributes only (textmap cells don't have number formatting)
         CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
         if (cellPtr) {
-            if (oldHasFgColor) cellPtr->setAppAttribute("fgColor", oldFgColor.data());
-            if (oldHasBgColor) cellPtr->setAppAttribute("bgColor", oldBgColor.data());
+            if (oldAttrs.hasFgColor) cellPtr->setAppAttribute("fgColor", oldAttrs.fgColor.data());
+            if (oldAttrs.hasBgColor) cellPtr->setAppAttribute("bgColor", oldAttrs.bgColor.data());
         }
     }
     else if (_dataEntryMode == ENTRY_FORMULA) {
@@ -2325,15 +2570,13 @@ SheetEditor::commitDataEntry(void)
         if (formulaText.length() > 0 && formulaText.data()[0] == '=') {
             formulaText = formulaText.subString(1, formulaText.length() - 1);
         }
+
         cell.setFormula(formulaText);
         sheetModel->setCell(pos, cell);
 
-        // Restore color attributes
+        // Restore all formatting attributes
         CxSheetCell *cellPtr = sheetModel->getCellPtr(pos);
-        if (cellPtr) {
-            if (oldHasFgColor) cellPtr->setAppAttribute("fgColor", oldFgColor.data());
-            if (oldHasBgColor) cellPtr->setAppAttribute("bgColor", oldBgColor.data());
-        }
+        restoreCellFormatting(cellPtr, &oldAttrs);
     }
     else if (_dataEntryMode == ENTRY_GENERAL) {
         // Post-commit parsing via sheetModel library
@@ -2342,29 +2585,6 @@ SheetEditor::commitDataEntry(void)
         if (!result.success) {
             setMessage(CxString("Input error: ") + result.errorMsg);
             return;
-        }
-
-        // Preserve formatting attributes from the existing cell when the new
-        // input doesn't explicitly specify them (e.g. typing "25" into a
-        // currency cell should keep currency formatting).
-        CxSheetCell *oldCellPtr = sheetModel->getCellPtr(pos);
-        int oldHasCurrency = 0;
-        int oldHasPercent = 0;
-        int oldHasThousands = 0;
-        int oldHasDecimalPlaces = 0;
-        int oldDecimalPlaces = 2;
-        int oldHasAlign = 0;
-        CxString oldAlign;
-        if (oldCellPtr) {
-            oldHasCurrency = oldCellPtr->hasAppAttribute("currency") ? 1 : 0;
-            oldHasPercent = oldCellPtr->hasAppAttribute("percent") ? 1 : 0;
-            oldHasThousands = oldCellPtr->hasAppAttribute("thousands") ? 1 : 0;
-            oldHasDecimalPlaces = oldCellPtr->hasAppAttribute("decimalPlaces") ? 1 : 0;
-            oldDecimalPlaces = oldCellPtr->getAppAttributeInt("decimalPlaces", 2);
-            oldHasAlign = oldCellPtr->hasAppAttribute("align") ? 1 : 0;
-            if (oldHasAlign) {
-                oldAlign = oldCellPtr->getAppAttributeString("align");
-            }
         }
 
         // Set cell value based on parsed type
@@ -2383,26 +2603,26 @@ SheetEditor::commitDataEntry(void)
             CxSheetInputParser::applyParsingAttributes(cellPtr, result);
 
             // Carry forward pre-existing formatting when input didn't specify it
-            if (!result.hasCurrency && oldHasCurrency) {
+            if (!result.hasCurrency && oldAttrs.hasCurrency) {
                 cellPtr->setAppAttribute("currency", true);
             }
-            if (!result.hasPercent && oldHasPercent) {
+            if (!result.hasPercent && oldAttrs.hasPercent) {
                 cellPtr->setAppAttribute("percent", true);
             }
-            if (!result.hasThousands && oldHasThousands) {
+            if (!result.hasThousands && oldAttrs.hasThousands) {
                 cellPtr->setAppAttribute("thousands", true);
             }
-            if (oldHasDecimalPlaces && result.dateFormat.length() == 0
+            if (oldAttrs.hasDecimalPlaces && result.dateFormat.length() == 0
                 && !result.hasCurrency) {
-                cellPtr->setAppAttribute("decimalPlaces", oldDecimalPlaces);
+                cellPtr->setAppAttribute("decimalPlaces", oldAttrs.decimalPlaces);
             }
-            if (oldHasAlign) {
-                cellPtr->setAppAttribute("align", oldAlign.data());
+            if (oldAttrs.hasAlign) {
+                cellPtr->setAppAttribute("align", oldAttrs.align.data());
             }
 
             // Restore color attributes
-            if (oldHasFgColor) cellPtr->setAppAttribute("fgColor", oldFgColor.data());
-            if (oldHasBgColor) cellPtr->setAppAttribute("bgColor", oldBgColor.data());
+            if (oldAttrs.hasFgColor) cellPtr->setAppAttribute("fgColor", oldAttrs.fgColor.data());
+            if (oldAttrs.hasBgColor) cellPtr->setAppAttribute("bgColor", oldAttrs.bgColor.data());
         }
     }
 
@@ -2640,6 +2860,92 @@ SheetEditor::focusCellHunt(CxKeyAction keyAction)
 
         // Update command line with live reference
         updateCellHuntDisplay();
+        return;
+    }
+
+    // Mouse click - select cell for reference
+    if (action == CxKeyAction::MOUSE_PRESS) {
+        int termRow = keyAction.mouseRow();
+        int termCol = keyAction.mouseCol();
+        int button = keyAction.mouseButton();
+
+        if (button == 1) {  // left button only
+            int dataRow, dataCol;
+            if (sheetView->terminalToCell(termRow, termCol, &dataRow, &dataCol)) {
+                CxSheetCellCoordinate oldPos = _cellHuntCurrentPos;
+                _cellHuntCurrentPos = CxSheetCellCoordinate(dataRow, dataCol);
+
+                // If shift+click, extend as range from anchor
+                if (keyAction.mouseShift() && !_cellHuntRangeActive) {
+                    _cellHuntRangeActive = 1;
+                    // _cellHuntAnchorPos stays where it was
+                }
+
+                // If not yet in range mode and plain click, reset anchor to clicked cell
+                if (!_cellHuntRangeActive) {
+                    _cellHuntAnchorPos = _cellHuntCurrentPos;
+                }
+
+                // Update SheetView
+                if (_cellHuntRangeActive) {
+                    sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
+                }
+                sheetView->updateCellHuntMove(oldPos, _cellHuntCurrentPos);
+                updateCellHuntDisplay();
+            }
+        }
+        return;
+    }
+
+    // Mouse drag - extend range selection
+    if (action == CxKeyAction::MOUSE_DRAG) {
+        int termRow = keyAction.mouseRow();
+        int termCol = keyAction.mouseCol();
+        int button = keyAction.mouseButton();
+
+        if (button == 1) {  // left button only
+            int dataRow, dataCol;
+            if (sheetView->terminalToCell(termRow, termCol, &dataRow, &dataCol)) {
+                CxSheetCellCoordinate oldPos = _cellHuntCurrentPos;
+                CxSheetCellCoordinate newPos(dataRow, dataCol);
+
+                if (oldPos.getRow() != newPos.getRow() || oldPos.getCol() != newPos.getCol()) {
+                    // Start range selection if not already active
+                    if (!_cellHuntRangeActive) {
+                        _cellHuntRangeActive = 1;
+                        // Anchor is where we started the drag (previous position)
+                    }
+
+                    _cellHuntCurrentPos = newPos;
+                    sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
+                    sheetView->updateCellHuntMove(oldPos, _cellHuntCurrentPos);
+                    updateCellHuntDisplay();
+                }
+            }
+        }
+        return;
+    }
+
+    // Mouse wheel - scroll viewport while in cell hunt mode
+    if (action == CxKeyAction::MOUSE_WHEEL) {
+        int button = keyAction.mouseButton();
+        int scrollAmount = 3;
+
+        // button 4 = wheel up, button 5 = wheel down
+        int rowDelta = (button == 4) ? -scrollAmount : scrollAmount;
+
+        // Shift+wheel scrolls horizontally
+        if (keyAction.mouseShift()) {
+            if (sheetView->scrollViewport(0, rowDelta)) {
+                sheetView->updateScreen();
+                updateCellHuntDisplay();
+            }
+        } else {
+            if (sheetView->scrollViewport(rowDelta, 0)) {
+                sheetView->updateScreen();
+                updateCellHuntDisplay();
+            }
+        }
         return;
     }
 }

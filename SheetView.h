@@ -203,6 +203,15 @@ class SheetView {
     CxString getEffectiveFgColor(int col, CxSheetCell *cell);
     CxString getEffectiveBgColor(int col, CxSheetCell *cell);
 
+    // Mouse coordinate translation methods
+    int terminalToCell(int termRow, int termCol, int *dataRow, int *dataCol);
+    // Convert terminal coordinates to cell coordinates
+    // Returns 1 if valid cell, 0 if outside data area (header, divider, etc.)
+
+    int scrollViewport(int rowDelta, int colDelta);
+    // Scroll the viewport by the given number of rows/columns
+    // Returns 1 if scrolling occurred, 0 if already at boundary
+
   private:
 
     CxScreen *screen;

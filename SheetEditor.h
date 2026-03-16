@@ -285,6 +285,23 @@ class SheetEditor {
     CxString getCellDisplayText(CxSheetCell *cell);
     CxString getCellFormatIndicator(CxSheetCell *cell, int col);
 
+    // cell formatting attribute capture/restore (used during cell editing)
+    struct CellFormatAttrs {
+        int hasCurrency;
+        int hasPercent;
+        int hasThousands;
+        int hasDecimalPlaces;
+        int decimalPlaces;
+        int hasAlign;
+        CxString align;
+        int hasFgColor;
+        CxString fgColor;
+        int hasBgColor;
+        CxString bgColor;
+    };
+    void captureCellFormatting(CxSheetCell *cell, CellFormatAttrs *attrs);
+    void restoreCellFormatting(CxSheetCell *cell, CellFormatAttrs *attrs);
+
     // post-commit parsing helpers (Excel-style type inference)
     int tryParseNumber(CxString input, double *value, int *hasCurrency,
                        int *hasPercent, int *hasThousands);

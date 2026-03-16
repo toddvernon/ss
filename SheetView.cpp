@@ -1274,8 +1274,30 @@ SheetView::formatNumber(double value, int col, CxSheetCell *cell)
         // Fixed decimal places
         snprintf(buf, sizeof(buf), "%.*f", useDecimalPlaces, absValue);
     } else {
-        // Auto format (use %g for compact representation)
-        snprintf(buf, sizeof(buf), "%g", absValue);
+        // Auto format - avoid scientific notation
+        // Check if value is effectively an integer
+        double intPart;
+        double fracPart = modf(absValue, &intPart);
+        if (fracPart < 0.0000001 && fracPart > -0.0000001) {
+            // Integer value - format without decimal point
+            snprintf(buf, sizeof(buf), "%.0f", absValue);
+        } else {
+            // Has fractional part - use enough precision without scientific notation
+            snprintf(buf, sizeof(buf), "%.10f", absValue);
+            // Remove trailing zeros after decimal point
+            char *dot = strchr(buf, '.');
+            if (dot != NULL) {
+                char *end = buf + strlen(buf) - 1;
+                while (end > dot && *end == '0') {
+                    *end = '\0';
+                    end--;
+                }
+                // Remove trailing decimal point if no digits after it
+                if (end == dot) {
+                    *end = '\0';
+                }
+            }
+        }
     }
 
     CxString numStr(buf);
@@ -3950,4 +3972,193 @@ SheetView::isDataRowVisible(int dataRow)
         if (visibleCount > visRows) return 0;
     }
     return 1;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::terminalToCell
+//
+// Convert terminal screen coordinates to spreadsheet cell coordinates.
+// Returns 1 if the position maps to a valid cell, 0 if outside the data area
+// (e.g., in column header row, row header column, status line, or dividers).
+//
+// Parameters:
+//   termRow, termCol - terminal coordinates (0-indexed)
+//   dataRow, dataCol - output cell coordinates (only valid if return is 1)
+//
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::terminalToCell(int termRow, int termCol, int *dataRow, int *dataCol)
+{
+    int screenWidth = screen->cols();
+
+    // Check if in column header row (row 0 typically)
+    if (termRow < _startRow + _colHeaderHeight) {
+        return 0;  // In column header area
+    }
+
+    // Check if in status/divider row at bottom
+    if (termRow > _endRow - 1) {
+        return 0;  // In status line area
+    }
+
+    // Check if in row header column
+    if (termCol < _rowHeaderWidth) {
+        return 0;  // In row number column
+    }
+
+    // Calculate freeze-aware boundaries
+    int frozenRowsH = frozenRowsScreenHeight();
+    int frozenColsW = frozenColsScreenWidth();
+    int divRowH = freezeDividerRowHeight();
+    int divColW = freezeDividerColWidth();
+
+    // Screen row boundaries
+    int frozenRowsStart = _startRow + _colHeaderHeight;
+    int frozenRowsEnd = frozenRowsStart + frozenRowsH;
+    int scrollRowsStart = frozenRowsEnd + divRowH;
+
+    // Screen col boundaries
+    int frozenColsStart = _rowHeaderWidth;
+    int frozenColsEnd = frozenColsStart + frozenColsW;
+    int scrollColsStart = frozenColsEnd + divColW;
+
+    // Check if in freeze divider row
+    if (_freezeRow > 0 && termRow >= frozenRowsEnd && termRow < scrollRowsStart) {
+        return 0;  // In horizontal divider
+    }
+
+    // Check if in freeze divider column
+    if (_freezeCol > 0 && termCol >= frozenColsEnd && termCol < scrollColsStart) {
+        return 0;  // In vertical divider
+    }
+
+    // Determine which quadrant the click is in and map to data coordinates
+
+    // Map row
+    int resultRow = -1;
+    if (_freezeRow > 0 && termRow < frozenRowsEnd) {
+        // Frozen row area - map directly from start
+        int screenRow = frozenRowsStart;
+        for (int r = 0; r < _freezeRow; r++) {
+            if (isRowHidden(r)) continue;
+            if (termRow < screenRow + 1) {
+                resultRow = r;
+                break;
+            }
+            screenRow++;
+        }
+    } else {
+        // Scrollable row area
+        int screenRow = scrollRowsStart;
+        int visRows = visibleDataRows();
+        for (int i = 0; i < visRows; i++) {
+            int r = _scrollRowOffset + i;
+            if (isRowHidden(r)) continue;
+            if (termRow < screenRow + 1) {
+                resultRow = r;
+                break;
+            }
+            screenRow++;
+        }
+    }
+
+    // Map column
+    int resultCol = -1;
+    if (_freezeCol > 0 && termCol < frozenColsEnd) {
+        // Frozen column area - map directly from start
+        int screenX = frozenColsStart;
+        for (int c = 0; c < _freezeCol; c++) {
+            if (_colHidden[c]) continue;
+            int colWidth = getColumnWidth(c);
+            if (termCol < screenX + colWidth) {
+                resultCol = c;
+                break;
+            }
+            screenX += colWidth;
+        }
+    } else {
+        // Scrollable column area
+        int screenX = scrollColsStart;
+        for (int c = _scrollColOffset; c < MAX_COLUMNS && screenX < screenWidth; c++) {
+            if (_colHidden[c]) continue;
+            int colWidth = getColumnWidth(c);
+            if (termCol < screenX + colWidth) {
+                resultCol = c;
+                break;
+            }
+            screenX += colWidth;
+        }
+    }
+
+    if (resultRow >= 0 && resultCol >= 0) {
+        *dataRow = resultRow;
+        *dataCol = resultCol;
+        return 1;
+    }
+
+    return 0;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetView::scrollViewport
+//
+// Scroll the viewport by the given number of rows and columns.
+// Positive delta scrolls content up/left (moves viewport down/right through data).
+// Returns 1 if scrolling occurred, 0 if already at boundary.
+//
+//-------------------------------------------------------------------------------------------------
+int
+SheetView::scrollViewport(int rowDelta, int colDelta)
+{
+    int scrolled = 0;
+
+    // Handle row scrolling
+    if (rowDelta != 0) {
+        int newRowOffset = _scrollRowOffset + rowDelta;
+
+        // Enforce minimum (must be >= _freezeRow for frozen panes)
+        if (newRowOffset < _freezeRow) {
+            newRowOffset = _freezeRow;
+        }
+
+        // No specific maximum - allow scrolling into empty area (spreadsheet convention)
+        // But prevent going negative
+        if (newRowOffset < 0) {
+            newRowOffset = 0;
+        }
+
+        if (newRowOffset != _scrollRowOffset) {
+            _scrollRowOffset = newRowOffset;
+            scrolled = 1;
+        }
+    }
+
+    // Handle column scrolling
+    if (colDelta != 0) {
+        int newColOffset = _scrollColOffset + colDelta;
+
+        // Enforce minimum (must be >= _freezeCol for frozen panes)
+        if (newColOffset < _freezeCol) {
+            newColOffset = _freezeCol;
+        }
+
+        // Enforce maximum (can't scroll past last column)
+        if (newColOffset >= MAX_COLUMNS) {
+            newColOffset = MAX_COLUMNS - 1;
+        }
+
+        // Prevent going negative
+        if (newColOffset < 0) {
+            newColOffset = 0;
+        }
+
+        if (newColOffset != _scrollColOffset) {
+            _scrollColOffset = newColOffset;
+            scrolled = 1;
+        }
+    }
+
+    return scrolled;
 }
