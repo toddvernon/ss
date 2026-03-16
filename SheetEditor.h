@@ -268,6 +268,12 @@ class SheetEditor {
     int _clipboardCols;
     int _clipboardIsCut;                      // 1 if clipboard from cut, 0 if from copy
 
+    // command hint click targets (for mouse support in command/argument mode)
+    CxString _hintItems[16];         // text of each displayed hint
+    int _hintStartCol[16];           // screen column where each hint's text starts
+    int _hintCount;                  // number of hints currently displayed
+    int _hintStripLen;               // buffer prefix length to preserve when clicking
+
     // color picker state
     int _colorPickerIndex;           // current selection in palette
     int _colorPickerScrollOffset;    // scroll position for display

@@ -59,6 +59,8 @@ SheetEditor::SheetEditor(CxScreen *scr, CxKeyboard *key, CxString filePath)
 , _clipboardRows(0)
 , _clipboardCols(0)
 , _clipboardIsCut(0)
+, _hintCount(0)
+, _hintStripLen(0)
 , _colorPickerIndex(0)
 , _colorPickerScrollOffset(0)
 , _colorPickerIsForeground(0)
@@ -1094,6 +1096,41 @@ SheetEditor::handleCommandModeInput(CxKeyAction keyAction)
         handleCommandChar(keyAction);
         return;
     }
+
+    // Mouse click on command line - select a hint
+    if (action == CxKeyAction::MOUSE_PRESS) {
+        int termRow = keyAction.mouseRow();
+        int termCol = keyAction.mouseCol();
+        int button = keyAction.mouseButton();
+
+        if (button == 1 && termRow == commandLineView->getScreenRow() && _hintCount > 0) {
+            // Find which hint was clicked
+            for (int i = 0; i < _hintCount; i++) {
+                int start = _hintStartCol[i];
+                int end = start + (int)_hintItems[i].length();
+                if (termCol >= start && termCol < end) {
+                    // Build new buffer: preserved prefix + clicked hint
+                    CxString newBuffer = _cmdBuffer.subString(0, _hintStripLen) + _hintItems[i];
+                    _cmdBuffer = newBuffer;
+
+                    // Check if this uniquely selects a command
+                    CompleterResult result = _commandCompleter.processEnter(_cmdBuffer);
+                    if (result.getStatus() == COMPLETER_SELECTED) {
+                        CommandEntry *cmd = (CommandEntry *)result.getSelectedData();
+                        if (cmd != NULL) {
+                            selectCommand(cmd);
+                            return;
+                        }
+                    }
+
+                    // Not unique yet - show next level hints
+                    updateCommandDisplay();
+                    return;
+                }
+            }
+        }
+        return;
+    }
 }
 
 
@@ -1157,6 +1194,34 @@ SheetEditor::handleArgumentModeInput(CxKeyAction keyAction)
                 updateArgumentDisplay();
             }
         }
+    }
+
+    // Mouse click on command line - select an argument hint
+    if (action == CxKeyAction::MOUSE_PRESS && _activeCompleter != NULL) {
+        int termRow = keyAction.mouseRow();
+        int termCol = keyAction.mouseCol();
+        int button = keyAction.mouseButton();
+
+        if (button == 1 && termRow == commandLineView->getScreenRow() && _hintCount > 0) {
+            for (int i = 0; i < _hintCount; i++) {
+                int start = _hintStartCol[i];
+                int end = start + (int)_hintItems[i].length();
+                if (termCol >= start && termCol < end) {
+                    _argBuffer = _hintItems[i];
+
+                    // Check if this is a unique match - auto-execute
+                    CompleterResult result = _activeCompleter->processEnter(_argBuffer);
+                    if (result.getStatus() == COMPLETER_SELECTED) {
+                        _argBuffer = result.getInput();
+                        executeCurrentCommand();
+                    } else {
+                        updateArgumentDisplay();
+                    }
+                    return;
+                }
+            }
+        }
+        return;
     }
 }
 
@@ -1346,11 +1411,17 @@ SheetEditor::updateCommandDisplay(void)
     // Don't show hints if exact match
     int isExactMatch = (matchCount == 1 && _cmdBuffer == matchNames[0]);
 
+    // Reset hint tracking for mouse click support
+    _hintCount = 0;
+    _hintStripLen = 0;
+
     if (matchCount > 0 && !isExactMatch) {
         display = display + "  ";
+        int col = (int)(prefix.length() + _cmdBuffer.length() + 2);  // current display column
 
         if (_cmdBuffer.length() == 0) {
             // Empty input: show category prefixes (file-, edit-, modify-, etc.)
+            _hintStripLen = 0;
             CxString categories[16];
             int categoryCount = 0;
 
@@ -1379,8 +1450,16 @@ SheetEditor::updateCommandDisplay(void)
 
             for (int i = 0; i < categoryCount; i++) {
                 display = display + "| ";
+                col += 2;  // "| "
+                if (_hintCount < 16) {
+                    _hintItems[_hintCount] = categories[i];
+                    _hintStartCol[_hintCount] = col;
+                    _hintCount++;
+                }
                 display = display + categories[i];
+                col += (int)categories[i].length();
                 display = display + " ";
+                col += 1;
             }
         } else {
             // Has input: show suffixes after the last completed segment (last dash)
@@ -1396,6 +1475,7 @@ SheetEditor::updateCommandDisplay(void)
                 }
             }
             int stripLen = (lastDash >= 0) ? lastDash + 1 : 0;
+            _hintStripLen = stripLen;
 
             CxString displayItems[16];
             int displayCount = 0;
@@ -1439,8 +1519,16 @@ SheetEditor::updateCommandDisplay(void)
 
             for (int i = 0; i < displayCount && i < 8; i++) {
                 display = display + "| ";
+                col += 2;
+                if (_hintCount < 16) {
+                    _hintItems[_hintCount] = displayItems[i];
+                    _hintStartCol[_hintCount] = col;
+                    _hintCount++;
+                }
                 display = display + displayItems[i];
+                col += (int)displayItems[i].length();
                 display = display + " ";
+                col += 1;
             }
             if (displayCount > 8) {
                 display = display + "...";
@@ -1476,6 +1564,9 @@ SheetEditor::updateArgumentDisplay(void)
     CxString display = prefix + _argBuffer;
 
     // Show completion hints if using a completer
+    _hintCount = 0;
+    _hintStripLen = 0;  // argument hints are full values, not suffixes
+
     if (_activeCompleter != NULL) {
         CxString matchNames[10];
         int matchCount = _activeCompleter->findMatches(_argBuffer, matchNames, 10);
@@ -1485,10 +1576,19 @@ SheetEditor::updateArgumentDisplay(void)
 
         if (matchCount > 0 && !isExactMatch) {
             display = display + "  ";
+            int col = (int)(prefix.length() + _argBuffer.length() + 2);
             for (int i = 0; i < matchCount && i < 5; i++) {
                 display = display + "| ";
+                col += 2;
+                if (_hintCount < 16) {
+                    _hintItems[_hintCount] = matchNames[i];
+                    _hintStartCol[_hintCount] = col;
+                    _hintCount++;
+                }
                 display = display + matchNames[i];
+                col += (int)matchNames[i].length();
                 display = display + " ";
+                col += 1;
             }
             if (matchCount > 5) {
                 display = display + "...";
