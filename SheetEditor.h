@@ -142,7 +142,8 @@ class SheetEditor {
     // command handlers
     void CMD_Quit(CxString commandLine);
     void CMD_QuitSave(CxString commandLine);
-    void CMD_QuitWithoutSave(CxString commandLine);
+    void CMD_QuitNoSave(CxString commandLine);
+    void CMD_Help(CxString commandLine);
     void CMD_Load(CxString commandLine);
     void CMD_Save(CxString commandLine);
     void CMD_InsertSymbol(CxString commandLine);

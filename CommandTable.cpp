@@ -332,6 +332,13 @@ CommandEntry commandTable[] = {
       &SheetEditor::CMD_ViewUnfreeze,
       NULL },
 
+    { "view-help",
+      NULL,
+      "Show help screen",
+      0,
+      &SheetEditor::CMD_Help,
+      NULL },
+
     //--- quit- ---------------------------------------------------------------
     { "quit-save",
       NULL,
@@ -344,7 +351,7 @@ CommandEntry commandTable[] = {
       NULL,
       "Quit without saving",
       0,
-      &SheetEditor::CMD_QuitWithoutSave,
+      &SheetEditor::CMD_QuitNoSave,
       NULL },
 
 #ifdef SS_CLAUDE_ENABLED

@@ -642,8 +642,8 @@ SheetEditor::focusEditor(CxKeyAction keyAction)
                 return dispatchControlX();
             }
             else if (tag == "K") {
-                // Ctrl-K: copy selection
-                CMD_Copy("");
+                // Ctrl-K: cut selection
+                CMD_Cut("");
             }
             else if (tag == "Y") {
                 // Ctrl-Y: paste
@@ -1978,15 +1978,28 @@ SheetEditor::CMD_QuitSave(CxString commandLine)
 
 
 //-------------------------------------------------------------------------------------------------
-// SheetEditor::CMD_QuitWithoutSave
+// SheetEditor::CMD_QuitNoSave
 //
 // Quit without saving.
 //-------------------------------------------------------------------------------------------------
 void
-SheetEditor::CMD_QuitWithoutSave(CxString commandLine)
+SheetEditor::CMD_QuitNoSave(CxString commandLine)
 {
     (void)commandLine;
     _quitRequested = 1;
+}
+
+
+//-------------------------------------------------------------------------------------------------
+// SheetEditor::CMD_Help
+//
+// Show help screen (ESC command wrapper).
+//-------------------------------------------------------------------------------------------------
+void
+SheetEditor::CMD_Help(CxString commandLine)
+{
+    (void)commandLine;
+    showHelpView();
 }
 
 
@@ -3173,6 +3186,38 @@ SheetEditor::focusHelpView(CxKeyAction keyAction)
         }
         return;
     }
+
+    // Mouse handling - click outside dismisses, inside ignored
+#if defined(_OSX_) || defined(_LINUX_)
+    if (action == CxKeyAction::MOUSE_PRESS || action == CxKeyAction::MOUSE_DOUBLE_CLICK) {
+        if (!helpView->isInsideFrame(keyAction.mouseRow(), keyAction.mouseCol())) {
+            helpView->setVisible(0);
+            programMode = EDIT;
+            sheetView->updateScreen();
+            resetPrompt();
+            screen->showCursor();
+        }
+        return;
+    }
+    if (action == CxKeyAction::MOUSE_WHEEL) {
+        int button = keyAction.mouseButton();
+        if (button == 4) {
+            CxKeyAction upAction("CURSOR:<arrow-up>");
+            helpView->routeKeyAction(upAction);
+            helpView->routeKeyAction(upAction);
+            helpView->routeKeyAction(upAction);
+        } else if (button == 5) {
+            CxKeyAction downAction("CURSOR:<arrow-down>");
+            helpView->routeKeyAction(downAction);
+            helpView->routeKeyAction(downAction);
+            helpView->routeKeyAction(downAction);
+        }
+        return;
+    }
+    if (action == CxKeyAction::MOUSE_RELEASE || action == CxKeyAction::MOUSE_DRAG) {
+        return;
+    }
+#endif
 
     // Route other keys (arrows for navigation)
     helpView->routeKeyAction(keyAction);

@@ -110,6 +110,9 @@ class HelpView
     void setVisible( int visible );
     // set visibility state for resize handling
 
+    int isInsideFrame( int row, int col );
+    // returns 1 if screen position is inside the dialog frame
+
     void setFirstRun( int firstRun );
     // set first run flag for welcome message display
 
@@ -181,6 +184,8 @@ class HelpView
 
     CxString _lastFooter;      // cached footer for change detection
 
+    // frame bounds for mouse hit testing
+    int _frameTop, _frameLeft, _frameBottom, _frameRight;
 };
 
 #endif
