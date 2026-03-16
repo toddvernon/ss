@@ -324,13 +324,15 @@ SheetView::updateCursorMove(CxSheetCellCoordinate oldPos, CxSheetCellCoordinate 
     int visCols = visibleDataCols();
 
     // Check if new position is outside visible area (scrolling needed)
+    // Frozen cells are always visible - they never trigger scrolling.
     int needsRowScroll = 0;
     int needsColScroll = 0;
 
-    if (!isDataRowVisible(newRow)) {
+    if (!isDataRowVisible(newRow) && newRow >= _freezeRow) {
         needsRowScroll = 1;
     }
-    if (newCol < _scrollColOffset || newCol >= _scrollColOffset + visCols) {
+    if (newCol >= _freezeCol &&
+        (newCol < _scrollColOffset || newCol >= _scrollColOffset + visCols)) {
         needsColScroll = 1;
     }
 
