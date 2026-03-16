@@ -175,3 +175,37 @@ endif
 $(OBJECTS):
 	$(CPP) $(CPPFLAGS) $(INC) -c $? -o $@
 
+
+########################################################################################
+# Create tar archive for distribution
+#
+########################################################################################
+
+archive:
+	@echo "Creating ss_unix.tar..."
+	@echo "  (extracts to cx_apps/ss/ when untarred from parent directory)"
+	@test -d ../../ARCHIVE || mkdir ../../ARCHIVE
+	@cd ../.. && tar cvf ARCHIVE/ss_unix.tar \
+		--exclude='*.o' \
+		--exclude='*.a' \
+		--exclude='.git' \
+		--exclude='.claude' \
+		--exclude='.DS_Store' \
+		--exclude='darwin_*' \
+		--exclude='linux_*' \
+		--exclude='sunos_*' \
+		--exclude='irix_*' \
+		--exclude='netbsd_*' \
+		--exclude='nextstep_*' \
+		--exclude='*.xcodeproj' \
+		--exclude='*.xcworkspace' \
+		--exclude='xcuserdata' \
+		--exclude='DerivedData' \
+		--exclude='*.pbxuser' \
+		--exclude='*.mode1v3' \
+		--exclude='*.mode2v3' \
+		--exclude='*.perspectivev3' \
+		--exclude='*.xcuserstate' \
+		cx_apps/ss
+	@echo "Archive created: ../../ARCHIVE/ss_unix.tar"
+
