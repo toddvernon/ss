@@ -3641,18 +3641,15 @@ SheetEditor::CMD_Clear(CxString commandLine)
 
     int cellCount = 0;
 
-    // Clear cells
+    // Clear cells - replace with empty cells to remove all data and attributes
     for (int row = minRow; row <= maxRow; row++) {
         for (int col = minCol; col <= maxCol; col++) {
             CxSheetCellCoordinate coord;
             coord.setRow(row);
             coord.setCol(col);
 
-            CxSheetCell *cell = sheetModel->getCellPtr(coord);
-            if (cell != NULL) {
-                cell->clear();
-                cell->removeAppAttribute("symbolFill");
-            }
+            CxSheetCell emptyCell;
+            sheetModel->setCell(coord, emptyCell);
             cellCount++;
         }
     }
