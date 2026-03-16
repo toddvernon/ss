@@ -119,30 +119,22 @@ install:
 ifeq ($(UNAME_S), linux)
 	sudo cp $(APP_OBJECT_DIR)/ss /usr/local/bin/ss
 	sudo chmod 755 /usr/local/bin/ss
+	sudo mkdir -p /usr/local/share/ss
+	sudo cp ss_help.md /usr/local/share/ss/ss_help.md
+	sudo chmod 644 /usr/local/share/ss/ss_help.md
+	sudo cp docs/CapTableExample.sheet /usr/local/share/ss/CapTableExample.sheet
+	sudo chmod 644 /usr/local/share/ss/CapTableExample.sheet
 endif
 ifeq ($(UNAME_S), darwin)
 	sudo cp $(APP_OBJECT_DIR)/ss /usr/local/bin/ss
 	sudo chmod 755 /usr/local/bin/ss
 	sudo xattr -cr /usr/local/bin/ss
-endif
-
-install-help:
-ifeq ($(UNAME_S), linux)
 	sudo mkdir -p /usr/local/share/ss
 	sudo cp ss_help.md /usr/local/share/ss/ss_help.md
 	sudo chmod 644 /usr/local/share/ss/ss_help.md
 	sudo cp docs/CapTableExample.sheet /usr/local/share/ss/CapTableExample.sheet
 	sudo chmod 644 /usr/local/share/ss/CapTableExample.sheet
 endif
-ifeq ($(UNAME_S), darwin)
-	sudo mkdir -p /usr/local/share/ss
-	sudo cp ss_help.md /usr/local/share/ss/ss_help.md
-	sudo chmod 644 /usr/local/share/ss/ss_help.md
-	sudo cp docs/CapTableExample.sheet /usr/local/share/ss/CapTableExample.sheet
-	sudo chmod 644 /usr/local/share/ss/CapTableExample.sheet
-endif
-
-install-all: install install-help
 
 
 $(APP_OBJECT_DIR)/ss: $(ALL_OBJECTS)
