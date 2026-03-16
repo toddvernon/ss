@@ -56,7 +56,7 @@ Ctrl+D              Cycle date formats
 
 ## Clipboard
 
-Ctrl+K              Copy selection
+Ctrl+K              Cut selection
 Ctrl+Y              Paste
 Delete/Backspace    Clear selection
 
@@ -65,7 +65,7 @@ Paste adjusts relative references. Absolute ($) references stay fixed.
 ## File Operations
 
 Ctrl+X Ctrl+S       Save file
-Ctrl+X Ctrl+C       Quit (prompts to save)
+Ctrl+X Ctrl+C       Quit without saving
 
 ## ESC Commands
 
@@ -85,7 +85,7 @@ Commands are organized by category:
 file-
   file-load                   Load spreadsheet from file
   file-save                   Save spreadsheet to file
-  file-quit                   Quit spreadsheet
+  file-quit                   Quit (refuses if unsaved changes)
 
 edit-
   edit-copy                   Copy selection to clipboard
@@ -139,11 +139,25 @@ modify-show-all               Show all hidden rows and columns
 
 view-
   view-freeze                 Freeze selected region (selection must start at A1)
+  view-help                   Show help screen
   view-unfreeze               Remove freeze panes
 
 quit-
   quit-save                   Save and quit
   quit-nosave                 Quit without saving
+
+## Mouse Support
+
+On macOS and Linux terminals with mouse support:
+
+  Click             Place cursor at click position
+  Click+Drag        Select range of cells
+  Shift+Click       Extend selection
+  Double-click      Edit cell
+  Scroll wheel      Scroll up/down
+
+  ESC command:      Click hints to select commands
+  Help view:        Scroll wheel navigates, click outside dismisses
 
 ## Freeze Panes
 
