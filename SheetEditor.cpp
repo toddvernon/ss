@@ -2926,6 +2926,12 @@ SheetEditor::focusCellHunt(CxKeyAction keyAction)
         return;
     }
 
+    // Mouse release - insert reference and return to formula editing
+    if (action == CxKeyAction::MOUSE_RELEASE) {
+        exitCellHuntMode(1);  // insert reference
+        return;
+    }
+
     // Mouse wheel - scroll viewport while in cell hunt mode
     if (action == CxKeyAction::MOUSE_WHEEL) {
         int button = keyAction.mouseButton();
@@ -2948,6 +2954,11 @@ SheetEditor::focusCellHunt(CxKeyAction keyAction)
         }
         return;
     }
+
+    // Any other key (printable chars, etc.) - insert reference and process the key
+    // as formula input. This lets the user type ")" immediately after selecting a range.
+    exitCellHuntMode(1);  // insert reference
+    focusDataEntry(keyAction);  // process the key as formula input
 }
 
 

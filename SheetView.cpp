@@ -1425,21 +1425,11 @@ SheetView::formatCellValue(CxSheetCell *cell, int col, int width)
         case CxSheetCell::DOUBLE:
             {
                 double value = cell->getDouble().value;
-                // Check for date format first
                 if (cell->hasAppAttribute("dateFormat")) {
                     CxString dateFormat = cell->getAppAttributeString("dateFormat");
                     rawText = CxSheetInputParser::formatDate(value, dateFormat);
-                }
-                // Check if any number formatting is active (cell or column level)
-                else if (getEffectiveCurrency(col, cell) ||
-                    getEffectivePercent(col, cell) ||
-                    getEffectiveThousands(col, cell) ||
-                    getEffectiveDecimalPlaces(col, cell) >= 0) {
-                    rawText = formatNumber(value, col, cell);
                 } else {
-                    char buf[64];
-                    snprintf(buf, sizeof(buf), "%g", value);
-                    rawText = CxString(buf);
+                    rawText = formatNumber(value, col, cell);
                 }
             }
             break;
@@ -1447,21 +1437,11 @@ SheetView::formatCellValue(CxSheetCell *cell, int col, int width)
         case CxSheetCell::FORMULA:
             {
                 double value = cell->getEvaluatedValue().value;
-                // Check for date format first
                 if (cell->hasAppAttribute("dateFormat")) {
                     CxString dateFormat = cell->getAppAttributeString("dateFormat");
                     rawText = CxSheetInputParser::formatDate(value, dateFormat);
-                }
-                // Check if any number formatting is active (cell or column level)
-                else if (getEffectiveCurrency(col, cell) ||
-                    getEffectivePercent(col, cell) ||
-                    getEffectiveThousands(col, cell) ||
-                    getEffectiveDecimalPlaces(col, cell) >= 0) {
-                    rawText = formatNumber(value, col, cell);
                 } else {
-                    char buf[64];
-                    snprintf(buf, sizeof(buf), "%g", value);
-                    rawText = CxString(buf);
+                    rawText = formatNumber(value, col, cell);
                 }
             }
             break;
