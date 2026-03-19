@@ -13,8 +13,11 @@ This installs:
   - Help file to /usr/local/share/ss/
   - Example spreadsheet to /usr/local/share/ss/
 
-Note: On macOS, double-clicking install.sh may not work due to
-quarantine restrictions on downloaded files. Use "bash install.sh"
+macOS Note: Do not run ss directly until you run install.sh.
+Downloaded binaries are blocked by macOS Gatekeeper. The installer
+clears this restriction automatically.
+
+If double-clicking install.sh does not work, run "bash install.sh"
 from the terminal instead.
 
 Try It
