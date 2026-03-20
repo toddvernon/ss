@@ -237,7 +237,7 @@ ss supports cell references, absolute/relative addressing, and range functions:
 =A$1 or =$A1        Mixed reference
 ```
 
-In formula mode, press ESC to enter **cell hunt mode**: navigate with arrow keys to select cell references visually, press Space to start a range, Enter to confirm.
+In formula mode, press TAB or Up/Down arrow to enter **cell hunt mode**: navigate with arrow keys to select cell references visually, Shift+Arrow to select a range, Enter to confirm. Range selections auto-insert a closing parenthesis.
 
 ## Help
 

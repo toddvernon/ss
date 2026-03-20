@@ -231,19 +231,24 @@ $           Currency mode - numbers displayed with $ and commas
 ```
 
 ### Cell Hunt Mode
-When in formula mode (after typing =), pressing ESC enters cell hunt mode for selecting cell references:
+When in formula mode (after typing =), pressing TAB or up/down arrow enters cell hunt mode for selecting cell references:
 
 **Entering cell hunt mode:**
-- Cursor jumps back to the cell where formula entry started
+- **TAB** enters cell hunt at the formula cell (no initial move)
+- **Up/Down arrow** enters cell hunt and moves one cell in that direction
+- Left/right arrows remain available for cursor movement within the formula text
 - The formula display updates in real-time as you navigate
 
 **Navigation and selection:**
 - Arrow keys move the highlight cell-to-cell
 - The current cell reference appears in the formula in real-time as you move
-- **SPACE** sets the start of a range (cell is anchored)
-- After SPACE, arrow keys extend the range (e.g., `$A$1:$C$3`)
+- **Shift+Arrow** starts/extends a range selection (anchors on first shift+arrow)
+- Plain arrow after a shift+arrow range resets back to single-cell mode
 - **ENTER** finalizes the selection (single cell or range) and returns to formula editing
 - **ESC** cancels cell hunt mode, discards any selection, returns to formula editing
+
+**Auto-close parenthesis:**
+- When a range is selected (via shift+arrow), a closing `)` is automatically appended after the range reference
 
 **Reference format:**
 - All references inserted via cell hunt are **absolute by default** (e.g., `$A$1`, `$A$1:$C$3`)
@@ -251,12 +256,11 @@ When in formula mode (after typing =), pressing ESC enters cell hunt mode for se
 
 **Example flow:**
 1. User types `=` to enter formula mode, types `SUM(`
-2. User presses ESC to enter cell hunt mode
+2. User presses TAB or up arrow to enter cell hunt mode
 3. User navigates to A1, formula shows `=SUM($A$1`
-4. User presses SPACE to anchor range start
-5. User navigates to A10, formula shows `=SUM($A$1:$A$10`
-6. User presses ENTER, returns to formula mode with `=SUM($A$1:$A$10`
-7. User types `)` to complete: `=SUM($A$1:$A$10)`
+4. User presses Shift+Down to start range and extend down
+5. User continues Shift+Down to A10, formula shows `=SUM($A$1:$A$10`
+6. User presses ENTER, range auto-closes: `=SUM($A$1:$A$10)`
 
 ## Key Libraries
 

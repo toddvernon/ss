@@ -2552,11 +2552,19 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
         return;
     }
 
-    // Shift+Arrow in formula mode enters cell hunt mode
-    if (action == CxKeyAction::SHIFT_CURSOR && _dataEntryMode == ENTRY_FORMULA) {
-        CxString tag = keyAction.tag();
-        enterCellHuntMode(tag);
-        return;
+    // TAB or up/down arrow in formula mode enters cell hunt mode
+    if (_dataEntryMode == ENTRY_FORMULA) {
+        if (action == CxKeyAction::TAB) {
+            enterCellHuntMode("");
+            return;
+        }
+        if (action == CxKeyAction::CURSOR) {
+            CxString tag = keyAction.tag();
+            if (tag == "<arrow-up>" || tag == "<arrow-down>") {
+                enterCellHuntMode(tag);
+                return;
+            }
+        }
     }
 
     // Arrow keys move cursor within buffer
@@ -2573,7 +2581,6 @@ SheetEditor::focusDataEntry(CxKeyAction keyAction)
                 updateDataEntryDisplay();
             }
         }
-        // UP/DOWN could be used to cancel and move cells, but ignore for now
         return;
     }
 
@@ -2830,8 +2837,8 @@ SheetEditor::updateDataEntryDisplay(void)
 // SheetEditor::enterCellHuntMode
 //
 // Enter cell hunt mode for selecting a cell reference in a formula. The direction parameter
-// indicates which shift+arrow key was pressed to enter the mode, and we move the hunt cursor
-// one cell in that direction from the formula cell.
+// indicates which arrow key was pressed to enter the mode (up/down), or empty string for TAB.
+// If an arrow was pressed, we move the hunt cursor one cell in that direction.
 //-------------------------------------------------------------------------------------------------
 void
 SheetEditor::enterCellHuntMode(CxString direction)
@@ -2849,19 +2856,13 @@ SheetEditor::enterCellHuntMode(CxString direction)
     // Save current cursor position for inserting reference later
     _cellHuntInsertPos = _dataEntryCursorPos;
 
-    // Move one cell in the direction of the shift+arrow
-    if (direction == "<shift-arrow-up>") {
+    // Move one cell in the direction of the arrow (TAB enters with no move)
+    if (direction == "<arrow-up>") {
         if (_cellHuntCurrentPos.getRow() > 0) {
             _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() - 1);
         }
-    } else if (direction == "<shift-arrow-down>") {
+    } else if (direction == "<arrow-down>") {
         _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() + 1);
-    } else if (direction == "<shift-arrow-left>") {
-        if (_cellHuntCurrentPos.getCol() > 0) {
-            _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() - 1);
-        }
-    } else if (direction == "<shift-arrow-right>") {
-        _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() + 1);
     }
 
     // Update SheetView with hunt mode state
@@ -2895,7 +2896,14 @@ SheetEditor::exitCellHuntMode(int insertRef)
             char c = ref.data()[i];
             _dataEntryBuffer.insert(_cellHuntInsertPos + i, CxUTFCharacter::fromASCII(c));
         }
-        _dataEntryCursorPos = _cellHuntInsertPos + ref.length();
+        int endPos = _cellHuntInsertPos + ref.length();
+
+        // Auto-insert closing paren after range selections (e.g., SUM($A$1:$A$10) )
+        if (_cellHuntRangeActive) {
+            _dataEntryBuffer.insert(endPos, CxUTFCharacter::fromASCII(')'));
+            endPos++;
+        }
+        _dataEntryCursorPos = endPos;
     }
 
     // Reset hunt state
@@ -2929,49 +2937,63 @@ SheetEditor::focusCellHunt(CxKeyAction keyAction)
         return;
     }
 
-    // SPACE - anchor range start (toggle range mode)
-    if (action == CxKeyAction::SYMBOL && keyAction.tag() == " ") {
+    // Shift+arrow - start/extend range selection
+    if (action == CxKeyAction::SHIFT_CURSOR) {
+        CxString tag = keyAction.tag();
+        CxSheetCellCoordinate oldPos = _cellHuntCurrentPos;
+
+        // Anchor range on first shift+arrow
         if (!_cellHuntRangeActive) {
-            // Start range selection
             _cellHuntRangeActive = 1;
             _cellHuntAnchorPos = _cellHuntCurrentPos;
-            sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
-        } else {
-            // SPACE again could toggle off, but for now we keep it simple
-            // and just ignore
         }
-        sheetView->updateScreen();
+
+        if (tag == "<shift-arrow-up>") {
+            if (_cellHuntCurrentPos.getRow() > 0) {
+                _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() - 1);
+            }
+        } else if (tag == "<shift-arrow-down>") {
+            _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() + 1);
+        } else if (tag == "<shift-arrow-left>") {
+            if (_cellHuntCurrentPos.getCol() > 0) {
+                _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() - 1);
+            }
+        } else if (tag == "<shift-arrow-right>") {
+            _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() + 1);
+        }
+
+        sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
+        sheetView->updateCellHuntMove(oldPos, _cellHuntCurrentPos);
         updateCellHuntDisplay();
         return;
     }
 
-    // Arrow keys - move hunt cursor (shift+arrow also accepted)
-    if (action == CxKeyAction::CURSOR || action == CxKeyAction::SHIFT_CURSOR) {
+    // Arrow keys - move hunt cursor (single cell, resets range)
+    if (action == CxKeyAction::CURSOR) {
         CxString tag = keyAction.tag();
         CxSheetCellCoordinate oldPos = _cellHuntCurrentPos;
 
-        // Handle both regular arrow and shift+arrow tags
-        if (tag == "<arrow-up>" || tag == "<shift-arrow-up>") {
+        if (tag == "<arrow-up>") {
             if (_cellHuntCurrentPos.getRow() > 0) {
                 _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() - 1);
             }
-        } else if (tag == "<arrow-down>" || tag == "<shift-arrow-down>") {
+        } else if (tag == "<arrow-down>") {
             _cellHuntCurrentPos.setRow(_cellHuntCurrentPos.getRow() + 1);
-        } else if (tag == "<arrow-left>" || tag == "<shift-arrow-left>") {
+        } else if (tag == "<arrow-left>") {
             if (_cellHuntCurrentPos.getCol() > 0) {
                 _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() - 1);
             }
-        } else if (tag == "<arrow-right>" || tag == "<shift-arrow-right>") {
+        } else if (tag == "<arrow-right>") {
             _cellHuntCurrentPos.setCol(_cellHuntCurrentPos.getCol() + 1);
         }
 
-        // Update SheetView
+        // Plain arrow resets any active range
         if (_cellHuntRangeActive) {
-            sheetView->setHuntRange(1, _cellHuntAnchorPos, _cellHuntCurrentPos);
+            _cellHuntRangeActive = 0;
+            sheetView->setHuntRange(0, _cellHuntAnchorPos, _cellHuntCurrentPos);
         }
-        sheetView->updateCellHuntMove(oldPos, _cellHuntCurrentPos);
 
-        // Update command line with live reference
+        sheetView->updateCellHuntMove(oldPos, _cellHuntCurrentPos);
         updateCellHuntDisplay();
         return;
     }

@@ -31,11 +31,12 @@ ESC (while editing) Cancel entry, cell unchanged
 =$A$1               Absolute reference
 =A$1 or =$A1        Mixed reference
 
-In formula mode, press ESC to enter cell hunt mode:
+In formula mode, press TAB or Up/Down arrow to enter cell hunt mode:
   Arrow keys        Navigate to select cell reference
-  Space             Start range selection
+  Shift+Arrow       Start/extend range selection
   Enter             Insert reference and return to formula
   ESC               Cancel cell hunt
+Range selections auto-insert a closing parenthesis.
 
 ## Textmap Rules
 
