@@ -3726,29 +3726,20 @@ SheetEditor::CMD_Paste(CxString commandLine)
         return;
     }
 
+    int cellCount = (int)_clipboard.entries();
     CxSheetCellCoordinate pasteAnchor = sheetModel->getCurrentPosition();
 
     if (_clipboardIsCut) {
-        // Build old/new coordinate lists and call model's moveCells
-        CxSList<CxSheetCellCoordinate> oldCoords;
-        CxSList<CxSheetCellCoordinate> newCoords;
-
-        for (int i = 0; i < (int)_clipboard.entries(); i++) {
+        // Paste from clipboard data directly (source was already cleared by cut)
+        for (int i = 0; i < cellCount; i++) {
             ClipboardCell clipCell = _clipboard.at(i);
 
-            CxSheetCellCoordinate oldCoord;
-            oldCoord.setRow(_clipboardAnchor.getRow() + clipCell.rowOffset);
-            oldCoord.setCol(_clipboardAnchor.getCol() + clipCell.colOffset);
+            CxSheetCellCoordinate targetCoord;
+            targetCoord.setRow(pasteAnchor.getRow() + clipCell.rowOffset);
+            targetCoord.setCol(pasteAnchor.getCol() + clipCell.colOffset);
 
-            CxSheetCellCoordinate newCoord;
-            newCoord.setRow(pasteAnchor.getRow() + clipCell.rowOffset);
-            newCoord.setCol(pasteAnchor.getCol() + clipCell.colOffset);
-
-            oldCoords.append(oldCoord);
-            newCoords.append(newCoord);
+            sheetModel->setCell(targetCoord, clipCell.cell);
         }
-
-        sheetModel->moveCells(oldCoords, newCoords);
 
     } else {
         // Copy/paste: place cells with formula adjustment via model method
@@ -3781,7 +3772,6 @@ SheetEditor::CMD_Paste(CxString commandLine)
     sheetView->updateCells(affected);
     sheetView->updateVisibleTextmapCells();
 
-    int cellCount = (int)_clipboard.entries();
     if (cellCount == 1) {
         setMessage("(1 cell pasted)");
     } else {
